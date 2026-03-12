@@ -1,51 +1,67 @@
-use std::error::Error;
-use std::fs::{read_to_string, read_dir, write, remove_file, remove_dir};
-use std::io::Read;
-use std::io::Error as IOError;
+use std::os::unix::fs::PermissionsExt;
+use std::fs::{
+    read_to_string,
+    read_dir,
+    create_dir_all,
+    remove_file,
+    remove_dir,
+    Permissions,
+    set_permissions,
+    write
+};
+use std::io::{Error as IOError, Read};
+use std::io::ErrorKind::DirectoryNotEmpty;
 use std::path::Path;
 use std::collections::HashMap;
 use xz2::read::XzDecoder;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use tar::Archive as TarArchive;
-use tar::Builder as TarBuilder;
-use tar::Header as TarHeader;
+use tar::{
+    Archive as TarArchive,
+    Builder as TarBuilder,
+    Header as TarHeader
+};
 use ar::Archive as ArArchive;
 use serde_json::{Value};
-use crate::error::ArchiveError;
+use crate::error::{
+    ArchiveError,
+    InputError,
+    MissingInput,
+    InvalidInput
+};
 use crate::atom::Atom;
 use crate::lock::{Lock, DirectoryEntry};
 
 pub fn read_file_as_json(path: &str)
--> Result<Value, Box<dyn Error>> {
-    let file = read_to_string(&path)?;
-    let json: Value = serde_json::from_str(&file)?;
+-> Result<Value, InputError> {
+    let file = read_to_string(&path)
+        .map_err(MissingInput::from)?;
+    let json: Value = serde_json::from_str(&file)
+        .map_err(InvalidInput::from)?;
 
     return Ok(json); 
 }
 
 pub fn read_collection_as_json(path: &str)
--> Result<Vec<Value>, Box<dyn Error>> {
+-> Result<Vec<Value>, InputError> {
     let mut collection = Vec::new();
     
-    for entry in read_dir(&path)? {
-        let entry = entry?;
+    for entry in read_dir(&path).map_err(MissingInput::from)? {
+        let entry = entry.map_err(MissingInput::from)?;
         let path = entry.path();
         
         if path.extension().and_then(|s| s.to_str()) == Some("json") {
-            let content = read_to_string(&path)?;
-            let item: Value = serde_json::from_str(&content)?;
+            let content = read_to_string(&path)
+                .map_err(MissingInput::from)?;
+            let item: Value = serde_json::from_str(&content)
+                .map_err(InvalidInput::from)?;
+            
             collection.push(item);
         }
     }
     
     return Ok(collection);
-}
-
-pub fn write_file_as_json(path: &str, value: &Value)
--> Result<(), IOError> {
-    return write(&path, serde_json::to_string_pretty(&value).unwrap());
 }
 
 pub fn map_atom_to_entries(
@@ -54,7 +70,6 @@ pub fn map_atom_to_entries(
     list_dirs: bool,
     ignores: &[&str]
 ) -> Vec<String> {
-
     let mut entries: Vec<String> = Vec::new();
     
     match lock {
@@ -83,7 +98,6 @@ pub fn map_atom_to_entries(
             }
         }
     }
-    
 
     return entries;
 }
@@ -94,10 +108,13 @@ pub fn map_entries_to_atom(
     ignore: &Lock,
     recusrive: bool
 ) -> Result<Vec<String>, IOError> {
-    
     let mut output: Vec<String> = Vec::new();
-    let lock   = if let Lock::Dir(dir) = lock   { dir } else { return Ok(output); };
-    let ignore = if let Lock::Dir(dir) = ignore { dir } else { return Ok(output); };
+    let lock = if let Lock::Dir(dir) = lock {
+        dir
+    } else { return Ok(output); };
+    let ignore = if let Lock::Dir(dir) = ignore {
+        dir
+    } else { return Ok(output); };
     let read_dir_path = if path == "" { "/" } else { path };
     let entries = read_dir(read_dir_path)?;
             
@@ -133,7 +150,8 @@ pub fn map_entries_to_atom(
 
         let mut nested = map_entries_to_atom(
             &full_path,
-            &lock.contents.get(&name_str).unwrap_or(&empty_lock),
+            &lock.contents.get(&name_str)
+                .unwrap_or(&empty_lock),
             &empty_lock,
             recusrive
         )?;
@@ -143,7 +161,8 @@ pub fn map_entries_to_atom(
     return Ok(output);
 }
 
-pub fn decompress_package(data: &[u8]) -> Result<Vec<u8>, ArchiveError> {
+pub fn decompress_package(data: &[u8])
+-> Result<Vec<u8>, ArchiveError> {
     if data.starts_with(b"\x1f\x8b") {
         let mut decoder = GzDecoder::new(data);
         let mut decompressed = Vec::new();
@@ -164,7 +183,8 @@ pub fn decompress_package(data: &[u8]) -> Result<Vec<u8>, ArchiveError> {
     return Ok(data.to_vec());
 }
 
-fn extract_tar(data: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError> {
+fn extract_tar(data: &[u8])
+-> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError> {
     let mut archive = TarArchive::new(data);
     let mut files = Vec::new();
     
@@ -182,7 +202,10 @@ fn extract_tar(data: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError>
             .map_err(|e| ArchiveError::Archive(e))?
             .to_string_lossy()
             .to_string();
-        let permission = entry.header().mode().map_err(|e| ArchiveError::Archive(e))?;
+        let permission = entry
+            .header()
+            .mode()
+            .map_err(|e| ArchiveError::Archive(e))?;
 
         entry.read_to_end(&mut buffer)
             .map_err(|e| ArchiveError::Archive(e))?;                
@@ -201,9 +224,14 @@ fn extract_ar(data: &[u8])
         let mut buffer = Vec::new();
         let mut entry = entry_result
             .map_err(|e| ArchiveError::Archive(e))?;
-        let name = String::from_utf8_lossy(entry.header().identifier())
-            .to_string();
-        let permission = entry.header().mode();
+        let name = String::from_utf8_lossy(
+            entry
+                .header()
+                .identifier()
+        ).to_string();
+        let permission = entry
+            .header()
+            .mode();
         
         entry.read_to_end(&mut buffer)
             .map_err(|e| ArchiveError::Archive(e))?;
@@ -225,29 +253,32 @@ pub fn uncover_archive(archive: &[u8])
     }
     
     return Err(
-        ArchiveError::FormatSupport("No valid archive type".to_string())
+        "No valid archive type".to_string().into()
     );
 }
 
 pub fn create_package(atom: Atom)
 -> Vec<u8> {
     let mut buffer: Vec<u8> = Vec::new();
+    let mut header = TarHeader::new_gnu();
     let mut tar = TarBuilder::new(
         GzEncoder::new(
             &mut buffer,
             Compression::default()
-        ));
-    let mut header = TarHeader::new_gnu();
+        )
+    );
     let metadata_string = serde_json::to_string_pretty(
-            &atom.metadata
-        ).unwrap();
+        &atom.metadata
+    ).unwrap();
     
     header.set_size(metadata_string.len() as u64);
     header.set_mode(0o644);
     tar.append_data(
         &mut header,
-        "metadata.json",
-        metadata_string.as_str().as_bytes()
+        "./metadata.json",
+        metadata_string
+            .as_str()
+            .as_bytes()
     ).expect("Failed to append metadata to tar archive");
     
     for (path, perm, data) in atom.files {
@@ -257,14 +288,15 @@ pub fn create_package(atom: Atom)
         header.set_mode(perm);
         tar.append_data(
             &mut header,
-            &format!("contents/{}", path),
+            &format!("./contents/{}", path),
             &data[..]
         ).expect(
             &format!("Failed to append {} to tar archive", path)
         );
     }
     
-    tar.finish().expect("Failed to build tar archive");
+    tar.finish()
+        .expect("Failed to build tar archive");
     
     drop(tar);
     return buffer;
@@ -281,7 +313,9 @@ pub fn parse_control(content: &str) -> Vec<(String, String)> {
             }
         } else if let Some(colon_pos) = line.find(':') {
             let field = line[..colon_pos].to_string();
-            let value = line[colon_pos+1..].trim().to_string();
+            let value = line[colon_pos+1..]
+                .trim()
+                .to_string();
             fields.push((field, value));
         }
     }
@@ -289,18 +323,38 @@ pub fn parse_control(content: &str) -> Vec<(String, String)> {
     return fields;
 }
 
-pub fn safe_rm_file_dir(path: &str) -> Result<(), IOError>{
+pub fn safe_rm_file_dir(path: &str) -> Result<(), IOError> {
     if Path::new(&path).is_file() {
         remove_file(&path)?;
-    } else {
-        match remove_dir(&path){
-            Ok(()) => {},
-            Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {},
-            Err(e) => {
-                Err(e)?;
-            },
-        };
+        
+        return Ok(());
     }
+    match remove_dir(&path){
+        Ok(()) => {},
+        Err(e) if e.kind() == DirectoryNotEmpty => {},
+        Err(e) => {
+            return Err(e);
+        },
+    };
+
+    return Ok(());
+}
+
+pub fn safe_place_file(path: &str, perm: u32, data: &[u8])
+-> Result<(), IOError> {
+    create_dir_all(
+        Path::new(&path)
+            .parent()
+            .expect("invalid path")
+    )?;
+    write(
+        &path,
+        &data
+    )?;
+    set_permissions(
+        &path,
+        Permissions::from_mode(perm)
+    )?;
 
     return Ok(());
 }

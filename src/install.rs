@@ -48,14 +48,14 @@ pub fn install_brick(
     ));
 
     for (path, perm, data) in files {
-        if path.as_str() == "metadata.json" {
-            continue;
-        }
-        
         let path = path
             .trim_start_matches("./")
             .trim_start_matches("contents")
             .to_string();
+
+        if path.as_str() == "./metadata.json" {
+            continue;
+        }
 
         if replace_entries.contains(&path) {
             replace_files.push((

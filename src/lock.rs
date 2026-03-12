@@ -1,6 +1,4 @@
-use std::error::Error;
 use std::collections::HashMap;
-use serde_json::{json, Value};
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone)]
@@ -52,7 +50,7 @@ pub enum Lock {
 }
 
 fn walk_and_increment(lock: &mut Lock, atom: &Lock){
-    let mut lock = match lock {
+    let lock = match lock {
         Lock::Dir(val) => {
             val
         },
@@ -85,8 +83,7 @@ fn walk_and_increment(lock: &mut Lock, atom: &Lock){
                 );
             }
         },
-        Lock::File(file) => {
-        }
+        _ => {}
     }
 }
 

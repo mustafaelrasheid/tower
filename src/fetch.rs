@@ -39,10 +39,15 @@ fn get_packages() -> Result<String, NetworkError> {
         );
     };
 
-    return Ok(String::from_utf8(packages).expect("Malformed utf8").to_string());
+    return Ok(
+        String::from_utf8(packages)
+            .expect("Malformed utf8")
+            .to_string()
+    );
 }
 
-fn find_package_filename(package_name: &str) -> Result<Option<String>, NetworkError> {
+fn find_package_filename(package_name: &str)
+-> Result<Option<String>, NetworkError> {
     let content = get_packages()?;
     
     for entry in content.split("\n\n") {
@@ -65,7 +70,8 @@ fn find_package_filename(package_name: &str) -> Result<Option<String>, NetworkEr
     return Ok(None);
 }
 
-pub fn get_deb(package: &str) -> Result<Option<Vec<u8>>, NetworkError>{
+pub fn get_deb(package: &str)
+-> Result<Option<Vec<u8>>, NetworkError> {
     let mut deb_data = Vec::new();
     let filename = if let Some(name) = find_package_filename(package)? {
         name

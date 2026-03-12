@@ -30,6 +30,12 @@ impl fmt::Display for ArchiveError {
     }
 }
 
+impl From<String> for ArchiveError {
+    fn from(err: String) -> Self {
+        return ArchiveError::FormatSupport(err);
+    }
+}
+
 #[derive(Debug)]
 pub enum InvalidInput {
     Archive(ArchiveError),

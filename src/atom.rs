@@ -1,6 +1,6 @@
-use crate::lock::{Lock, DirectoryEntry};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+use crate::lock::{Lock, DirectoryEntry};
 
 #[derive(Clone)]
 pub struct Atom {

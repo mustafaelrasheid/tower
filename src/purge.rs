@@ -1,5 +1,4 @@
 use std::io::Error as IOError;
-use serde_json::Value;
 use crate::utils::{map_atom_to_entries, map_entries_to_atom};
 use crate::atom::AtomMetadata;
 use crate::lock::Lock;

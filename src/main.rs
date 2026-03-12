@@ -12,45 +12,59 @@ mod atom;
 mod group;
 
 use std::process::exit;
-use std::error::Error;
 use std::fs::{
     read,
-    remove_dir,
-    create_dir_all,
-    remove_file,
     write,
-    set_permissions,
-    Permissions
 };
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::io::Error as IOError;
 use dialoguer::Confirm;
 use clap::Parser;
 use args::{Cli, Commands};
-use serde_json::Value;
 use crate::atom::AtomMetadata;
 use crate::utils::{
     read_collection_as_json,
-    write_file_as_json,
     read_file_as_json,
     safe_rm_file_dir,
+    safe_place_file,
     create_package
 };
 use crate::lock::Lock;
 use crate::group::Group;
 use crate::atom::Atom;
+use crate::error::{InputError, MissingInput, InvalidInput};
 
-fn rebuild_lock(lib_dir: &str, atoms: &Vec<Lock>) 
--> Result<(), IOError> {
+trait HandleOutError<T> {
+    fn handle_out_error(self) -> T;
+}
+
+impl<T> HandleOutError<T> for Result<T, IOError> {
+    fn handle_out_error(self) -> T {
+        match self {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("Failed: {}", e);
+                exit(1);
+            }
+        }
+    }
+}
+
+fn rebuild_lock(lib_dir: &str, atoms: &Vec<AtomMetadata>) {
     write(
         &format!("{}/lock.json", lib_dir),
         &serde_json::to_string_pretty(
-            &lock::build_lock(atoms)
+            &lock::build_lock(
+                &atoms
+                .iter()
+                .map(|a| a.clone().into())
+                .collect::<Vec<Lock>>()
+            )
         ).unwrap()
-    )?;
-
-    return Ok(());
+    ).unwrap_or_else(|e| {
+        eprintln!("Failed to rebuild lock due to {}", e);
+        exit(1);
+    });
 }
 
 fn confirm_pkgs_action(yes: bool, prompt: &str, packages: &Vec<String>) {
@@ -150,13 +164,14 @@ fn get_lock(lib_dir: &str) -> Lock {
 }
 
 fn output(file_name: &str, file: &[u8]) {
-    write(file_name, file).unwrap_or_else(|e| {
-        eprintln!("Cannot write file {} due to: {}", file_name, e);
-        exit(1);
-    })
+    write(file_name, file)
+        .unwrap_or_else(|e| {
+            eprintln!("Cannot write file {} due to: {}", file_name, e);
+            exit(1);
+        })
 }
 
-fn main() -> Result<(), IOError>{
+fn main() -> Result<(), InputError>{
     let cli = Cli::parse();
         
     match cli.command {
@@ -165,11 +180,8 @@ fn main() -> Result<(), IOError>{
 
             rebuild_lock(
                 &lib_dir,
-                &atoms.iter().map(|a| a.clone().into()).collect()
-            ).unwrap_or_else(|e| {
-                eprintln!("Failed to rebuild lock due to {}", e);
-                exit(1);
-            });
+                &atoms
+            );
         },
         Commands::Validate { lib_dir, root_dir } => {
             let atoms  = get_atoms(&lib_dir);
@@ -182,36 +194,27 @@ fn main() -> Result<(), IOError>{
                 &lock,
                 &ignore,
                 &root_dir
-            ).unwrap_or_else(|e| {
-                eprintln!("Failed to validate atoms due to: {}", e);
-                exit(1);
-            });
+            ).map_err(|e| Into::<MissingInput>::into(e))?;
         },
         Commands::Export { packages, lib_dir, root_dir } => {
             let atoms = get_atoms(&lib_dir);
 
             for package in packages {
-                let atom = atoms
-                    .get(
-                        atoms.iter()
-                            .position(|value| { value.name.as_str() == package })
-                            .ok_or("No Atom exists with this name")
-                            .unwrap_or_else(|e| {
-                                eprintln!("{}", e);
-                                exit(1);
-                            })
-                    )
-                    .unwrap();
+                let atom = atoms.get(
+                    atoms.iter()
+                        .position(|value| value.name.as_str() == package)
+                        .unwrap_or_else(|| {
+                            eprintln!("No Atom exists with this name: {}", package);
+                            exit(1);
+                        })
+                ).unwrap();
 
                 output(
                     &format!("{}.brick", package),
                     &export::export(
                         &root_dir,
                         &atom
-                    ).unwrap_or_else(|e| {
-                        eprintln!("Failed to export package due to {}", e);
-                        exit(1);
-                    })
+                    ).map_err(|e| Into::<MissingInput>::into(e))?
                 );
             }
         },
@@ -228,57 +231,39 @@ fn main() -> Result<(), IOError>{
                 let (replace_entries, exist_entries) = install::install_brick(
                     &lib_dir,
                     &root_dir,
-                    &read(&package)?,
-                ).unwrap_or_else(|e| {
-                    eprintln!("Failed to install package due to {}", e);
-                    exit(1);
-                });
+                    &read(&package).map_err(|e| Into::<MissingInput>::into(e))?,
+                )?;
 
                 confirm_pkgs_action(
                     yes,
                     "The following files are going to be added or replaced",
                     &replace_entries
                         .iter()
-                        .map(|(name, perm, _)| name.to_string())
+                        .map(|(name, _, _)| name.to_string())
                         .collect::<Vec<String>>()
                 );
+
+                for (entry, perm, data) in replace_entries {
+                    safe_place_file(&entry, perm, &data).handle_out_error();
+                }
                 confirm_pkgs_action(
                     yes,
                     "The following files are going to be added if not found",
                     &exist_entries
                         .iter()
-                        .map(|(name, perm, _)| name.to_string())
+                        .map(|(name, _, _)| name.to_string())
                         .collect::<Vec<String>>()
                 );
-
-                for (entry, perm, data) in replace_entries {
-                    create_dir_all(
-                        Path::new(&entry)
-                            .parent()
-                            .expect("invalid path")
-                    )?;
-                    write(&entry, &data)?;
-                    set_permissions(&entry, Permissions::from_mode(perm))?;
-                }
                 for (entry, perm, data) in exist_entries {
-                    create_dir_all(
-                        Path::new(&entry)
-                            .parent()
-                            .expect("invalid path")
-                    )?;
-                    if !Path::new(&entry).exists() {
-                        write(&entry, &data)?;
+                    if !Path::new(&entry).exists() || force {
+                        safe_place_file(&entry, perm, &data).handle_out_error();
                     }
-                    set_permissions(&entry, Permissions::from_mode(perm))?;
                 }
             }
             rebuild_lock(
                 &lib_dir,
-                &atoms.iter().map(|a| a.clone().into()).collect()
-            ).unwrap_or_else(|e| {
-                eprintln!("Failed to rebuild lock due to {}", e);
-                exit(1);
-            });
+                &atoms
+            );
         },
         Commands::Purge { packages, lib_dir, root_dir, yes } => {
             let atoms  = get_atoms(&lib_dir);
@@ -292,31 +277,26 @@ fn main() -> Result<(), IOError>{
             
             for package in packages {
                 let atom = atoms.iter()
-                    .find(|value| { value.name.as_str() == package })
-                    .ok_or("No Atom exists with this name")
-                    .unwrap_or_else(|e| {
-                        eprintln!("Failed to purge package due to: {}", e);
+                    .find(|a| a.name.as_str() == package)
+                    .ok_or_else(|| {
+                        eprintln!("No Package exists under the name {}", package);
                         exit(1);
-                    });
-                let mut atoms = atoms.clone();
-                
-                atoms.remove(
-                    atoms.iter()
-                        .position(|value| { value.name.as_str() == package })
-                        .unwrap()
-                );
+                    })
+                    .unwrap();
+
                 let entries = purge::purge_atom(
                     &lib_dir,
                     &root_dir,
                     &ignore,
                     atom,
                     &lock::build_lock(
-                        &atoms.iter().map(|a| a.clone().into()).collect()
+                        &atoms
+                            .iter()
+                            .filter(|a| a.name.as_str() != package)
+                            .map(|a| a.clone().into())
+                            .collect::<Vec<Lock>>()
                     )
-                ).unwrap_or_else(|e| {
-                    eprintln!("Failed to purge package due to: {}", e);
-                    exit(1);
-                });
+                ).map_err(|e| Into::<MissingInput>::into(e))?;
 
                 confirm_pkgs_action(
                     yes,
@@ -324,34 +304,30 @@ fn main() -> Result<(), IOError>{
                     &entries
                 );
                 
-                entries
-                    .iter()
-                    .for_each(|entry|
-                        safe_rm_file_dir(entry)
-                            .expect(&format!("Failed to remove {}", entry))
+                entries.iter()
+                    .for_each(|entry| safe_rm_file_dir(entry)
+                        .expect(&format!("Failed to remove {}", entry))
                     );
             }
-            let atoms = get_atoms(&lib_dir);
             rebuild_lock(
                 &lib_dir,
-                &atoms.iter().map(|a| a.clone().into()).collect()
-            ).unwrap_or_else(|e| {
-                eprintln!("Failed to rebuild lock due to {}", e);
-                exit(1);
-            });
+                &get_atoms(&lib_dir)
+            );
         },
         Commands::Convert { packages, deps } => {
             let mut deps = deps
                 .iter()
-                .map(|dep| read(&dep).unwrap())
-                .map(|dep| convert::extract_deb(&dep).unwrap())
-                .collect::<Vec<Atom>>();
+                .map(|dep| read(&dep).map_err(|e| Into::<MissingInput>::into(e)))
+                .collect::<Result<Vec<Vec<u8>>, MissingInput>>()?
+                .iter()
+                .map(|dep| convert::extract_deb(&dep))
+                .collect::<Result<Vec<Atom>, InvalidInput>>()?;
 
             for package in packages {
-                deps.push(convert::extract_deb(&read(&package)?).unwrap());
+                deps.push(convert::extract_deb(&read(&package).map_err(|e| Into::<MissingInput>::into(e))?).unwrap());
 
                 let (pkg, missing) = convert::convert_deb(
-                    &read(&package)?,
+                    &read(&package).map_err(|e| Into::<MissingInput>::into(e))?,
                     &deps
                 ).unwrap_or_else(|e| {
                     eprintln!("Failed to export {} due to {}", &package, e);

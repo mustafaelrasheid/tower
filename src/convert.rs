@@ -1,6 +1,6 @@
 use std::string::FromUtf8Error;
 use std::collections::{HashMap, HashSet};
-use crate::utils::{uncover_archive, create_package, parse_control};
+use crate::utils::{uncover_archive, parse_control};
 use crate::error::{ArchiveError, InvalidInput};
 use crate::atom::{Atom, AtomMetadata};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
@@ -188,9 +188,8 @@ pub fn extract_deb(package: &[u8])
 fn resolve_recursive(
     package: &AtomMetadata,
     available: &HashMap<String, AtomMetadata>,
-    add_package: bool
-) -> Result<(HashSet<String>, Vec<String>), InvalidInput> {
-    let mut missing = Vec::new();
+) -> Result<(HashSet<String>, HashSet<String>), InvalidInput> {
+    let mut missing = HashSet::new();
     let mut processed: HashSet<String> = HashSet::new();
     let mut to_process = vec![package.clone()];
     
@@ -207,7 +206,7 @@ fn resolve_recursive(
                     to_process.push(dep_meta.clone());
                 }
             } else {
-                missing.push(dep);
+                missing.insert(dep);
             }
         }
     }
@@ -218,7 +217,7 @@ fn resolve_recursive(
 pub fn resolve_deps(
     package: &mut Atom,
     deps: &[Atom]
-) -> Result<Vec<String>, InvalidInput> {
+) -> Result<HashSet<String>, InvalidInput> {
     let deps_metadata = deps
         .iter()
         .map(|atom| (
@@ -229,7 +228,6 @@ pub fn resolve_deps(
     let (processed, missing) = resolve_recursive(
         &package.metadata,
         &deps_metadata,
-        false
     )?;
 
     for processed_pkg_name in processed {
@@ -256,7 +254,7 @@ pub fn resolve_deps(
 }
 
 pub fn convert_deb(package: &[u8], deps: &[Atom])
--> Result<(Atom, Vec<String>), InvalidInput> {
+-> Result<(Atom, HashSet<String>), InvalidInput> {
     let mut package = extract_deb(package)?;
     let missing = resolve_deps(&mut package, &deps)?;
     

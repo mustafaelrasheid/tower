@@ -55,7 +55,7 @@ pub enum Commands {
     Convert {
         packages: Vec<String>,
         #[arg(long, num_args=1..)]
-        deps: Vec<String>
+        deps: Vec<String>,
     },
     GetDeb {
         packages: Vec<String>,

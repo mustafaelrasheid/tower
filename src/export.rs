@@ -1,9 +1,9 @@
 use std::fs::{read};
 use std::fs;
 use std::io::Error as IOError;
+use std::os::unix::fs::PermissionsExt;
 use crate::utils::{map_atom_to_entries, create_package};
 use crate::atom::{Atom, AtomMetadata};
-use std::os::unix::fs::PermissionsExt;
 
 fn get_files(
     metadata: &AtomMetadata,
