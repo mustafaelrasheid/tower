@@ -28,6 +28,7 @@ impl AsRef<str> for Modification {
 #[derive(Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct DirectoryEntry{
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>,
     pub contents: HashMap<String, Lock>,
 }
@@ -36,8 +37,9 @@ pub struct DirectoryEntry{
 #[derive(Serialize, Deserialize)]
 pub struct FileEntry {
     pub modification: Option<Modification>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub file_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>
 }
 
