@@ -343,9 +343,7 @@ pub fn parse_control(content: &str) -> Vec<(String, String)> {
 
 pub fn safe_rm_file_dir(path: &str) -> Result<(), IOError> {
     if Path::new(&path).is_file() {
-        remove_file(&path)?;
-        
-        return Ok(());
+        return remove_file(&path);
     }
     
     return match remove_dir(&path){
