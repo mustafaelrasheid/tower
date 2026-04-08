@@ -23,12 +23,7 @@ pub fn purge_atom(
         true,
         &[]
     );
-
-    for atom_entry in atom_entries.clone().iter().rev() {
-        if extra_entries.contains(&atom_entry) {
-            output.push(atom_entry.to_string());
-        }
-    }
+    
     output.push(
         format!(
             "{}/atoms/{}.json",
@@ -36,6 +31,11 @@ pub fn purge_atom(
             metadata.name
         )
     );
+    for atom_entry in atom_entries.clone().iter().rev() {
+        if extra_entries.contains(&atom_entry) {
+            output.push(atom_entry.to_string());
+        }
+    }
 
     return Ok(output);
 }

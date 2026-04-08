@@ -12,7 +12,6 @@ use std::fs::{
 use std::io::{Error as IOError, Read};
 use std::io::ErrorKind::DirectoryNotEmpty;
 use std::path::Path;
-use std::collections::HashMap;
 use xz2::read::XzDecoder;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -94,6 +93,7 @@ pub fn map_atom_to_entries(
                     list_dirs,
                     ignores
                 );
+
                 entries.append(&mut nested);
             }
         }
@@ -143,11 +143,7 @@ pub fn map_entries_to_atom(
             }
         }
 
-        let empty_lock = Lock::Dir(DirectoryEntry {
-            count: None,
-            contents: HashMap::new(),
-        });
-
+        let empty_lock = Lock::Dir(DirectoryEntry::new());
         let mut nested = map_entries_to_atom(
             &full_path,
             &lock.contents.get(&name_str)
@@ -155,6 +151,7 @@ pub fn map_entries_to_atom(
             &empty_lock,
             recusrive
         )?;
+
         output.append(&mut nested);
     }
 
@@ -166,6 +163,7 @@ pub fn decompress_package(data: &[u8])
     if data.starts_with(b"\x1f\x8b") {
         let mut decoder = GzDecoder::new(data);
         let mut decompressed = Vec::new();
+
         decoder.read_to_end(&mut decompressed)
             .map_err(|e| ArchiveError::Compression(e))?;
         
@@ -174,6 +172,7 @@ pub fn decompress_package(data: &[u8])
     if data.starts_with(b"\xfd7zXZ\x00") {
         let mut decoder = XzDecoder::new(data);
         let mut decompressed = Vec::new();
+
         decoder.read_to_end(&mut decompressed)
             .map_err(|e| ArchiveError::Compression(e))?;
         
@@ -201,6 +200,7 @@ fn extract_tar(data: &[u8])
         let path = entry.path()
             .map_err(|e| ArchiveError::Archive(e))?
             .to_string_lossy()
+            .trim_start_matches("./")
             .to_string();
         let permission = entry
             .header()
@@ -224,18 +224,18 @@ fn extract_ar(data: &[u8])
         let mut buffer = Vec::new();
         let mut entry = entry_result
             .map_err(|e| ArchiveError::Archive(e))?;
-        let name = String::from_utf8_lossy(
+        let path = String::from_utf8_lossy(
             entry
                 .header()
                 .identifier()
-        ).to_string();
+        ).trim_start_matches("./").to_string();
         let permission = entry
             .header()
             .mode();
         
         entry.read_to_end(&mut buffer)
             .map_err(|e| ArchiveError::Archive(e))?;
-        files.push((name, permission, buffer));
+        files.push((path, permission, buffer));
     }
     
     return Ok(files);
@@ -245,7 +245,8 @@ pub fn uncover_archive(archive: &[u8])
 -> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError> {
     let archive = decompress_package(&archive)?;
 
-    if archive.starts_with(b"!<arch>") || archive.starts_with(b"!<thin>") {
+    if archive.starts_with(b"!<arch>")
+    || archive.starts_with(b"!<thin>") {
         return Ok(extract_ar(&archive)?);
     }
     if archive.len() > 262 && &archive[257..262] == b"ustar" {
@@ -255,6 +256,23 @@ pub fn uncover_archive(archive: &[u8])
     return Err(
         "No valid archive type".to_string().into()
     );
+}
+
+pub fn find_entry<'a>(
+    entries: &'a Vec<(String, u32, Vec<u8>)>,
+    cases: &[&str]
+) -> Result<&'a [u8], InvalidInput> {
+    return entries.iter()
+        .find_map(|(name, _perm, data)| {
+            if cases.contains(&name.as_str()) {
+                return Some(data.as_slice());
+            } else {
+                return None;
+            }
+        })
+        .ok_or(InvalidInput::MissingData(
+            format!("Missing {} from archive", cases.join(", "))
+        ));
 }
 
 pub fn create_package(atom: Atom)
@@ -297,8 +315,8 @@ pub fn create_package(atom: Atom)
     
     tar.finish()
         .expect("Failed to build tar archive");
-    
     drop(tar);
+
     return buffer;
 }
 
@@ -329,15 +347,11 @@ pub fn safe_rm_file_dir(path: &str) -> Result<(), IOError> {
         
         return Ok(());
     }
-    match remove_dir(&path){
-        Ok(()) => {},
-        Err(e) if e.kind() == DirectoryNotEmpty => {},
-        Err(e) => {
-            return Err(e);
-        },
+    
+    return match remove_dir(&path){
+        Err(e) if e.kind() == DirectoryNotEmpty => Ok(()),
+        rest => rest
     };
-
-    return Ok(());
 }
 
 pub fn safe_place_file(path: &str, perm: u32, data: &[u8])

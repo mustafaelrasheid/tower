@@ -1,6 +1,6 @@
 use std::string::FromUtf8Error;
 use std::collections::{HashMap, HashSet};
-use crate::utils::{uncover_archive, parse_control};
+use crate::utils::{uncover_archive, parse_control, find_entry};
 use crate::error::{ArchiveError, InvalidInput};
 use crate::atom::{Atom, AtomMetadata};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
@@ -9,35 +9,36 @@ fn map_control_to_atom(
     control: &Vec<(String, String)>,
     files: &Vec<(String, u32, Vec<u8>)>
 ) -> AtomMetadata {
-    let mut name        = String::new();
-    let mut description = String::new();
-    let mut depends     = Vec::new();
-    let mut contents    = HashMap::new();
+    let mut metadata = AtomMetadata::new("", None, None, None);
     
     for (field, value) in control {
         match field.as_str() {
             "Package" => {
-                name = value
+                metadata.name = value
                     .as_str()
                     .to_string();
             },
             "Description" => {
-                description = value
-                    .as_str()
-                    .to_string();
+                metadata.description = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
             },
             "Depends" => {
-                depends = value
-                    .split(',')
-                    .map(|dep| { dep
-                        .trim()
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string()
-                    })
-                    .filter(|dep| !dep.is_empty())
-                    .collect();
+                metadata.depends = Some(
+                    value
+                        .split(',')
+                        .map(|dep| { dep
+                            .trim()
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .to_string()
+                        })
+                        .filter(|dep| !dep.is_empty())
+                        .collect()
+                );
             },
             _ => {}
         }
@@ -45,18 +46,13 @@ fn map_control_to_atom(
     
     for (path, _perm, _data) in files {
         insert_path(
-            &mut contents,
+            &mut metadata.contents,
             path,
             Modification::Replace
         );
     }
     
-    return AtomMetadata{
-        name:        name,
-        description: Some(description),
-        depends:     Some(depends),
-        contents:    contents
-    };
+    return metadata;
 }
 
 fn insert_path(
@@ -75,11 +71,9 @@ fn insert_path(
     if parts.len() == 1 {
         contents.insert(
             part.clone(),
-            Lock::File(FileEntry {
-                modification: Some(modification),
-                file_type: None,
-                count: None
-            })
+            Lock::File(FileEntry::new(
+                Some(modification), None, None
+            ))
         );
         return;
     }
@@ -87,10 +81,7 @@ fn insert_path(
     if !contents.contains_key(part) {
         contents.insert(
             part.clone(),
-            Lock::Dir(DirectoryEntry {
-                contents: HashMap::new(),
-                count: None
-            })
+            Lock::Dir(DirectoryEntry::new())
         );
     }
     
@@ -115,15 +106,7 @@ fn dpkg_control(content: &[u8])
 -> Result<Vec<(String, String)>, InvalidInput> {
     let archive = uncover_archive(content)?;
     
-    let control = archive.iter()
-        .find_map(|(name, _perm, data)| {
-            if name == "./control" {
-                Some(data)
-            } else { None }
-        })
-        .ok_or(InvalidInput::MissingData(
-            "Missing control file in control archive"
-        .to_string()))?;
+    let control = find_entry(&archive, &["control"])?;
     
     return Ok(
         parse_control(&String::from_utf8(control.to_vec())?)
@@ -137,16 +120,9 @@ fn dpkg_data(content: &[u8])
 
 pub fn extract_deb(package: &[u8])
 -> Result<Atom, InvalidInput> {
-    let entries: Vec<(String, u32, Vec<u8>)> = uncover_archive(package)?;
-    
+    let entries = uncover_archive(package)?;
     let version = dpkg_version(
-        entries.iter().find_map(|(name, _perm, data)| {
-            if name == "debian-binary" {
-                Some(data)
-            } else { None }
-        }).ok_or(InvalidInput::MissingData(
-            "Missing version file"
-        .to_string()))?,
+        find_entry(&entries, &["debian-binary"])?,
     )?;
     if &version != "2.0" {
         return Err(
@@ -156,32 +132,14 @@ pub fn extract_deb(package: &[u8])
         );
     }
     let control = dpkg_control(
-        entries.iter().find_map(|(name, _perm, data)| {
-            if name == "control.tar.gz" || name == "control.tar.xz" {
-                Some(data)
-            } else { None }
-        }).ok_or(InvalidInput::MissingData(
-            "Missing control file"
-        .to_string()))?,
+        find_entry(&entries, &["control.tar.gz", "control.tar.xz"])?,
     )?;
     let data = dpkg_data(
-        entries.iter().find_map(|(name, _perm, data)| {
-            if name == "data.tar.gz" || name == "data.tar.xz" {
-                Some(data)
-            } else { None }
-        }).ok_or(InvalidInput::MissingData(
-            "Missing data file"
-        .to_string()))?,
+        find_entry(&entries, &["data.tar.gz", "data.tar.xz"])?,
     )?;
     
     return Ok(
-        Atom{
-            metadata: map_control_to_atom(
-                &control,
-                &data
-            ),
-            files: data
-        }
+        Atom::new(map_control_to_atom(&control, &data), data)
     );
 }
 
@@ -190,7 +148,7 @@ fn resolve_recursive(
     available: &HashMap<String, AtomMetadata>,
 ) -> Result<(HashSet<String>, HashSet<String>), InvalidInput> {
     let mut missing = HashSet::new();
-    let mut processed: HashSet<String> = HashSet::new();
+    let mut processed = HashSet::new();
     let mut to_process = vec![package.clone()];
     
     while let Some(current) = to_process.pop() {
@@ -218,13 +176,13 @@ pub fn resolve_deps(
     package: &mut Atom,
     deps: &[Atom]
 ) -> Result<HashSet<String>, InvalidInput> {
-    let deps_metadata = deps
+    let deps_metadata:HashMap<String, AtomMetadata> = deps
         .iter()
         .map(|atom| (
             atom.metadata.name.to_string(),
             atom.metadata.clone()
         ))
-        .collect::<HashMap<String, AtomMetadata>>();
+        .collect();
     let (processed, missing) = resolve_recursive(
         &package.metadata,
         &deps_metadata,

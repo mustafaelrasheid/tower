@@ -123,7 +123,7 @@ impl From<IOError> for NetworkError {
 #[derive(Debug)]
 pub enum MissingInput {
     Network(NetworkError),
-    File(IOError)
+    File(IOError),
 }
 
 impl Error for MissingInput {}

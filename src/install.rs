@@ -1,4 +1,4 @@
-use crate::utils::{map_atom_to_entries, uncover_archive}; 
+use crate::utils::{map_atom_to_entries, uncover_archive, find_entry}; 
 use crate::atom::AtomMetadata;
 use crate::error::InvalidInput;
 
@@ -13,19 +13,10 @@ pub fn install_brick(
     let files = uncover_archive(package)?;
     let mut replace_files: Vec<(String, u32, Vec<u8>)> = Vec::new();
     let mut exist_files:   Vec<(String, u32, Vec<u8>)> = Vec::new();
-    let metadata_buf = files
-        .iter()
-        .find_map(|(path, _perm, data)| {
-            if path.as_str() == "metadata.json" {
-                return Some(data);
-            }
-            return None;
-        }).ok_or(InvalidInput::MissingData(
-            "Missing metadata.json file"
-        .to_string()))?;
+    let metadata_buf = find_entry(&files, &["metadata.json"])?;
     let metadata: AtomMetadata = serde_json::from_value(
         serde_json::from_str(
-            &String::from_utf8_lossy(&metadata_buf.clone()).to_string()
+            &String::from_utf8_lossy(&metadata_buf).to_string()
         )?
     ).unwrap();
     let replace_entries = map_atom_to_entries(
@@ -42,21 +33,19 @@ pub fn install_brick(
     );
 
     replace_files.push((
-        format!("{}/atoms/{}.json",lib_dir, &metadata.name),
+        format!("{}/atoms/{}.json", lib_dir, &metadata.name),
         0o644,
-        metadata_buf.clone()
+        metadata_buf.to_vec()
     ));
 
     for (path, perm, data) in files {
         let path = path
-            .trim_start_matches("./")
             .trim_start_matches("contents")
             .to_string();
 
-        if path.as_str() == "./metadata.json" {
+        if path.as_str() == "metadata.json" {
             continue;
         }
-
         if replace_entries.contains(&path) {
             replace_files.push((
                 format!("{}/{}", root_dir, &path),

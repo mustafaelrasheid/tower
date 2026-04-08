@@ -9,7 +9,7 @@ const PACKAGES_INDEX_URL: &str =
 const CACHE_DIR: &str = "/tmp/tower";
 const PACKAGES_FILE: &str = "/tmp/tower/Packages";
 
-fn fetch_packages() -> Result<Vec<u8>, NetworkError>{
+fn fetch_packages() -> Result<Vec<u8>, NetworkError> {
     let mut compressed = Vec::new();
 
     ureq::get(PACKAGES_INDEX_URL)
@@ -54,16 +54,17 @@ fn find_package_filename(package_name: &str)
         let fields = parse_control(entry);
         let name = if let Some((_, name)) =
             fields.iter().find(|(key, _)| key == "Package") {
-                name
-            } else { continue; };
+            name
+        } else { continue; };
 
         if name != package_name {
             continue;
         }
         if let Some((_, filename)) = 
-            fields.iter().find(|(key, _)| key == "Filename") {
+        fields.iter().find(|(key, _)| key == "Filename") {
             return Ok(Some(filename.clone()));
         }
+
         return Ok(None);
     }
     

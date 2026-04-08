@@ -34,13 +34,13 @@ fn get_files(
 
 pub fn export(root_dir: &str, metadata: &AtomMetadata)
 -> Result<Vec<u8>, IOError> {
-    let atom = Atom {
-        metadata: metadata.clone(),
-        files: get_files(
+    let atom = Atom::new(
+        metadata.clone(),
+        get_files(
             &metadata,
             root_dir
         )?,
-    };
+    );
     
     return Ok(create_package(atom));
 }

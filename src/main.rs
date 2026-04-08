@@ -12,15 +12,11 @@ mod atom;
 mod group;
 
 use std::process::exit;
-use std::fs::{
-    read,
-    write,
-};
+use std::fs::{read, write};
 use std::path::Path;
-use std::io::Error as IOError;
 use dialoguer::Confirm;
 use clap::Parser;
-use args::{Cli, Commands};
+use crate::args::{Cli, Commands};
 use crate::atom::AtomMetadata;
 use crate::utils::{
     read_collection_as_json,
@@ -32,23 +28,52 @@ use crate::utils::{
 use crate::lock::Lock;
 use crate::group::Group;
 use crate::atom::Atom;
-use crate::error::{InputError, MissingInput, InvalidInput};
+use crate::error::{InputError, MissingInput};
 
-trait HandleOutError<T> {
-    fn handle_out_error(self) -> T;
+trait UnwrapOrExit<T> {
+    fn unwrap_or_exit(self) -> T;
 }
 
-impl<T> HandleOutError<T> for Result<T, IOError> {
-    fn handle_out_error(self) -> T {
-        match self {
+impl<T, E: std::fmt::Display> UnwrapOrExit<T> for Result<T, E> {
+    fn unwrap_or_exit(self) -> T {
+        return match self {
             Ok(val) => val,
             Err(e) => {
-                eprintln!("Failed: {}", e);
+                eprintln!("{}", e);
                 exit(1);
             }
-        }
+        };
     }
 }
+
+trait ExpectOrExit<T> {
+    fn expect_or_exit(self, msg: &str) -> T;
+}
+
+impl<T> ExpectOrExit<T> for Option<T> {
+    fn expect_or_exit(self, msg: &str) -> T {
+        return match self {
+            Some(val) => val,
+            None => {
+                eprintln!("{}", msg);
+                exit(1);
+            }
+        };
+    }
+}
+
+impl<T, E: std::fmt::Display> ExpectOrExit<T> for Result<T, E> {
+    fn expect_or_exit(self, msg: &str) -> T {
+        return match self {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("{}: {}", msg, e);
+                exit(1);
+            }
+        };
+    }
+}
+
 
 fn rebuild_lock(lib_dir: &str, atoms: &Vec<AtomMetadata>) {
     write(
@@ -61,10 +86,7 @@ fn rebuild_lock(lib_dir: &str, atoms: &Vec<AtomMetadata>) {
                 .collect::<Vec<Lock>>()
             )
         ).unwrap()
-    ).unwrap_or_else(|e| {
-        eprintln!("Failed to rebuild lock due to {}", e);
-        exit(1);
-    });
+    ).expect_or_exit("Failed to rebuild lock");
 }
 
 fn confirm_pkgs_action(yes: bool, prompt: &str, packages: &Vec<String>) {
@@ -89,22 +111,18 @@ fn confirm_pkgs_action(yes: bool, prompt: &str, packages: &Vec<String>) {
         return;
     }
 
-    exit(0);
+    exit(1);
 }
 
 fn get_atoms(lib_dir: &str) -> Vec<AtomMetadata> {
-    let atoms: Vec<AtomMetadata> = read_collection_as_json(&format!("{}/atoms", lib_dir))
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to read atoms directory: {}", e);
-            exit(1);
-        })
+    let atoms: Vec<AtomMetadata> = read_collection_as_json(
+            &format!("{}/atoms", lib_dir)
+        )
+        .expect_or_exit("Failed to read atoms directory")
         .into_iter()
         .map(|atom| {
             let val: AtomMetadata = serde_json::from_value(atom)
-                .unwrap_or_else(|e| {
-                    eprintln!("Invalid Json format for atom: {}", e);
-                    exit(1);
-                });
+                .expect_or_exit("Invalid Json format for atom");
             return val;
         })
         .collect();
@@ -116,31 +134,20 @@ fn get_ignore(lib_dir: &str) -> Lock {
     let ignore: Lock = 
         serde_json::from_value(
             read_file_as_json(&format!("{}/ignore.json", lib_dir))
-                .unwrap_or_else(|e| {
-                    eprintln!("Failed to read ignore.json: {}", e);
-                    exit(1);
-                })
+                .expect_or_exit("Failed to read ignore.json")
         )
-        .unwrap_or_else(|e| {
-            eprintln!("Invalid Json format for ignore.json: {}", e);
-            exit(1);
-        });
+        .expect_or_exit("Invalid Json format for ignore.json");
 
     return ignore;
 }
 
 fn get_groups(lib_dir: &str) -> Vec<Group> {
     let groups = read_collection_as_json(&format!("{}/groups", lib_dir))
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to read lock.json: {}", e);
-            exit(1);
-        })
+        .expect_or_exit("Failed to read groups directory")
         .into_iter()
-        .map(|atom| {
-            let val: Group = serde_json::from_value(atom).unwrap_or_else(|e| {
-                eprintln!("Invalid Json format for group: {}", e);
-                exit(1);
-            });
+        .map(|group| {
+            let val: Group = serde_json::from_value(group)
+                .expect_or_exit("Invalid Json format for group");
             return val;
         })
         .collect();
@@ -151,27 +158,19 @@ fn get_groups(lib_dir: &str) -> Vec<Group> {
 fn get_lock(lib_dir: &str) -> Lock {
     let lock: Lock = 
         serde_json::from_value(
-            read_file_as_json(&format!("{}/lock.json", lib_dir)).unwrap_or_else(|e| {
-                eprintln!("Failed to read lock.json: {}", e);
-                exit(1);
-            })
-        ).unwrap_or_else(|e| {
-            eprintln!("Invalid Json format for lock.json: {}", e);
-            exit(1);
-        });
+            read_file_as_json(&format!("{}/lock.json", lib_dir))
+                .expect_or_exit("Failed to read lock.json")
+        ).expect_or_exit("Invalid Json format for lock.json");
 
     return lock;
 }
 
 fn output(file_name: &str, file: &[u8]) {
     write(file_name, file)
-        .unwrap_or_else(|e| {
-            eprintln!("Cannot write file {} due to: {}", file_name, e);
-            exit(1);
-        })
+        .expect_or_exit(&format!("Cannot write file {}", file_name));
 }
 
-fn main() -> Result<(), InputError>{
+fn main() -> Result<(), InputError> {
     let cli = Cli::parse();
         
     match cli.command {
@@ -194,27 +193,23 @@ fn main() -> Result<(), InputError>{
                 &lock,
                 &ignore,
                 &root_dir
-            ).map_err(|e| Into::<MissingInput>::into(e))?;
+            ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit();
         },
         Commands::Export { packages, lib_dir, root_dir } => {
             let atoms = get_atoms(&lib_dir);
 
             for package in packages {
-                let atom = atoms.get(
-                    atoms.iter()
-                        .position(|value| value.name.as_str() == package)
-                        .unwrap_or_else(|| {
-                            eprintln!("No Atom exists with this name: {}", package);
-                            exit(1);
-                        })
-                ).unwrap();
+                let atom = atoms
+                    .iter()
+                    .find(|val| val.name.as_str() == package)
+                    .expect_or_exit(&format!("No package exists with name {}", package));
 
                 output(
                     &format!("{}.brick", package),
                     &export::export(
                         &root_dir,
                         &atom
-                    ).map_err(|e| Into::<MissingInput>::into(e))?
+                    ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit()
                 );
             }
         },
@@ -231,7 +226,7 @@ fn main() -> Result<(), InputError>{
                 let (replace_entries, exist_entries) = install::install_brick(
                     &lib_dir,
                     &root_dir,
-                    &read(&package).map_err(|e| Into::<MissingInput>::into(e))?,
+                    &read(&package).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit(),
                 )?;
 
                 confirm_pkgs_action(
@@ -242,10 +237,11 @@ fn main() -> Result<(), InputError>{
                         .map(|(name, _, _)| name.to_string())
                         .collect::<Vec<String>>()
                 );
-
-                for (entry, perm, data) in replace_entries {
-                    safe_place_file(&entry, perm, &data).handle_out_error();
+                for (path, perm, data) in replace_entries {
+                    safe_place_file(&path, perm, &data)
+                        .expect_or_exit(&format!("Failed to place file {}", path));
                 }
+
                 confirm_pkgs_action(
                     yes,
                     "The following files are going to be added if not found",
@@ -254,9 +250,10 @@ fn main() -> Result<(), InputError>{
                         .map(|(name, _, _)| name.to_string())
                         .collect::<Vec<String>>()
                 );
-                for (entry, perm, data) in exist_entries {
-                    if !Path::new(&entry).exists() || force {
-                        safe_place_file(&entry, perm, &data).handle_out_error();
+                for (path, perm, data) in exist_entries {
+                    if !Path::new(&path).exists() || force {
+                        safe_place_file(&path, perm, &data)
+                            .expect_or_exit(&format!("Failed to place file {}", path));
                     }
                 }
             }
@@ -278,12 +275,7 @@ fn main() -> Result<(), InputError>{
             for package in packages {
                 let atom = atoms.iter()
                     .find(|a| a.name.as_str() == package)
-                    .ok_or_else(|| {
-                        eprintln!("No Package exists under the name {}", package);
-                        exit(1);
-                    })
-                    .unwrap();
-
+                    .expect_or_exit(&format!("No Package exists with name {}", package));
                 let entries = purge::purge_atom(
                     &lib_dir,
                     &root_dir,
@@ -296,7 +288,7 @@ fn main() -> Result<(), InputError>{
                             .map(|a| a.clone().into())
                             .collect::<Vec<Lock>>()
                     )
-                ).map_err(|e| Into::<MissingInput>::into(e))?;
+                ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit();
 
                 confirm_pkgs_action(
                     yes,
@@ -304,10 +296,10 @@ fn main() -> Result<(), InputError>{
                     &entries
                 );
                 
-                entries.iter()
-                    .for_each(|entry| safe_rm_file_dir(entry)
-                        .expect(&format!("Failed to remove {}", entry))
-                    );
+                for entry in entries {
+                    safe_rm_file_dir(&entry)
+                        .expect_or_exit(&format!("Failed to remove {}", &entry))
+                }
             }
             rebuild_lock(
                 &lib_dir,
@@ -317,22 +309,26 @@ fn main() -> Result<(), InputError>{
         Commands::Convert { packages, deps } => {
             let mut deps = deps
                 .iter()
-                .map(|dep| read(&dep).map_err(|e| Into::<MissingInput>::into(e)))
-                .collect::<Result<Vec<Vec<u8>>, MissingInput>>()?
+                .map(|dep| read(&dep).map_err(MissingInput::from).map_err(InputError::from))
+                .collect::<Result<Vec<Vec<u8>>, InputError>>().unwrap_or_exit()
                 .iter()
-                .map(|dep| convert::extract_deb(&dep))
-                .collect::<Result<Vec<Atom>, InvalidInput>>()?;
+                .map(|dep| convert::extract_deb(&dep).map_err(InputError::from))
+                .collect::<Result<Vec<Atom>, InputError>>().unwrap_or_exit();
 
             for package in packages {
-                deps.push(convert::extract_deb(&read(&package).map_err(|e| Into::<MissingInput>::into(e))?).unwrap());
+                deps.push(
+                    convert::extract_deb(
+                        &read(&package)
+                            .map_err(MissingInput::from)
+                            .map_err(InputError::from)
+                            .unwrap_or_exit()
+                    ).unwrap_or_exit()
+                );
 
                 let (pkg, missing) = convert::convert_deb(
-                    &read(&package).map_err(|e| Into::<MissingInput>::into(e))?,
+                    &read(&package).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit(),
                     &deps
-                ).unwrap_or_else(|e| {
-                    eprintln!("Failed to export {} due to {}", &package, e);
-                    exit(1);
-                });
+                ).expect_or_exit(&format!("Failed to export {}", &package));
                 for miss in missing {
                     println!("package {} was not found", miss);
                 }
@@ -346,56 +342,35 @@ fn main() -> Result<(), InputError>{
             for package in packages {
                 let mut unresolved_deps: Vec<String> = Vec::new();
                 let mut deps: Vec<Atom> = Vec::new();
-                let main_pkg = if let Some(pkg) = fetch::get_deb(&package)
-                    .unwrap_or_else(|e| {
-                        eprintln!(
-                            "Failed to get {} from deb due to {}",
-                            package, e
-                        );
-                        exit(1);
-                    }) { pkg } else {
-                        eprintln!(
-                            "Package {} doesn't exist",
-                            package
-                        );
-                        exit(1);
-                    };
+                let main_pkg = fetch::get_deb(&package)
+                    .expect_or_exit(&format!("Failed to get {} from deb", package))
+                    .expect_or_exit(&format!("Package {} doesn't exist", package));
 
                 println!("Downloaded package {}", package);
 
                 let pkg = loop {
-                    let (pkg, missing) = convert::convert_deb(&main_pkg, &deps).unwrap_or_else(|e| {
-                        eprintln!("Failed to export {} due to {}", &package, e);
-                        exit(1);
-                    });
+                    let (pkg, missing) = convert::convert_deb(&main_pkg, &deps)
+                        .expect_or_exit(&format!("Failed to export {}", &package));
                     
                     if missing.is_empty() || missing.iter().all(|m| unresolved_deps.contains(m)) {
                         break pkg;
                     }
                     for miss in missing {
-                        let dep = &fetch::get_deb(&miss)
-                            .unwrap_or_else(|e| {
-                                eprintln!(
-                                    "Failed to get {} from deb due to {}",
-                                    miss, e
-                                );
-                                exit(1);
-                            });
-                        match dep {
-                            Some(dep) => {
+                        match &fetch::get_deb(&miss)
+                            .expect_or_exit(&format!("Failed to get {} from deb", miss)) {
+                            Some(val) => {
                                 println!("Downloaded package {}", miss);
-                                deps.push(convert::extract_deb(dep).unwrap());
+                                deps.push(convert::extract_deb(val).unwrap_or_exit());
                             },
                             None => {
                                 println!("Package {} not found, continueing", miss);
                                 unresolved_deps.push(miss);
                             }
                         }
-
                     }
                 };
                 output(
-                    &format!("./{}.brick", package),
+                    &format!("{}.brick", package),
                     &create_package(pkg)
                 );
             }

@@ -8,8 +8,19 @@ pub struct Atom {
     pub files: Vec<(String, u32, Vec<u8>)>,
 }
 
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+impl Atom {
+    pub fn new(
+        metadata: AtomMetadata,
+        files: Vec<(String, u32, Vec<u8>)>
+    ) -> Self {
+        return Self {
+            metadata: metadata,
+            files: files
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AtomMetadata {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -17,6 +28,22 @@ pub struct AtomMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depends: Option<Vec<String>>,
     pub contents: HashMap<String, Lock>,
+}
+
+impl AtomMetadata {
+    pub fn new(
+        name: &str,
+        description: Option<String>,
+        depends: Option<Vec<String>>,
+        contents: Option<HashMap<String, Lock>>
+    ) -> Self {
+        return Self {
+            name: String::from(name),
+            description: description,
+            depends: depends,
+            contents: contents.unwrap_or(HashMap::new())
+        }
+    }
 }
 
 impl From<AtomMetadata> for Lock {

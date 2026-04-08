@@ -31,7 +31,7 @@ pub fn validate_atoms(lock: &Lock, ignore: &Lock, root_dir: &str)
     return Ok(());
 }
 
-fn map_to_atoms(groups: &Vec<Group>, atoms: &Vec<AtomMetadata>){
+fn map_to_atoms(groups: &Vec<Group>, atoms: &Vec<AtomMetadata>) {
     let file_atoms: Vec<String> = atoms.iter()
         .map(|a| a.name.to_string())
         .collect();

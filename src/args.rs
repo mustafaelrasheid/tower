@@ -15,11 +15,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    RebuildLock{
+    RebuildLock {
         #[arg(long, default_value = "/var/lib/tower")]
         lib_dir: String,
     },
-    Validate{
+    Validate {
         #[arg(long, default_value = "/var/lib/tower")]
         lib_dir: String,
         #[arg(long, default_value = "")]
@@ -59,5 +59,5 @@ pub enum Commands {
     },
     GetDeb {
         packages: Vec<String>,
-    }
+    },
 } 
