@@ -18,7 +18,7 @@ pub fn install_brick(
         serde_json::from_str(
             &String::from_utf8_lossy(&metadata_buf).to_string()
         )?
-    ).unwrap();
+    )?;
     let replace_entries = map_atom_to_entries(
         &metadata.clone().into(),
         root_dir,
