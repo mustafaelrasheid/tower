@@ -9,7 +9,7 @@ fn map_control_to_atom(
     control: &Vec<(String, String)>,
     files: &Vec<(String, u32, Vec<u8>)>
 ) -> AtomMetadata {
-    let mut metadata = AtomMetadata::new("", None, None, None);
+    let mut metadata = AtomMetadata::new("", None, None, None, None);
     
     for (field, value) in control {
         match field.as_str() {
@@ -25,6 +25,13 @@ fn map_control_to_atom(
                         .to_string()
                 );
             },
+            "Version" => {
+                metadata.version = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                )
+            }
             "Depends" => {
                 metadata.depends = Some(
                     value
