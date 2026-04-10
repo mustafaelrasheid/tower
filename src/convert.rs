@@ -9,7 +9,8 @@ fn map_control_to_atom(
     control: &Vec<(String, String)>,
     files: &Vec<(String, u32, Vec<u8>)>
 ) -> AtomMetadata {
-    let mut metadata = AtomMetadata::new("", None, None, None, None);
+    let mut metadata = AtomMetadata::new(
+        "", None, None, None, None, None, None, None, None, None);
     
     for (field, value) in control {
         match field.as_str() {
@@ -30,8 +31,43 @@ fn map_control_to_atom(
                     value
                         .as_str()
                         .to_string()
-                )
-            }
+                );
+            },
+            "Architecture" => {
+                metadata.architecture = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
+            },
+            "Maintainer" => {
+                metadata.maintainer = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
+            },
+            "Section" => {
+                metadata.section = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
+            },
+            "Priority" => {
+                metadata.priority = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
+            },
+            "Homepage" => {
+                metadata.homepage = Some(
+                    value
+                        .as_str()
+                        .to_string()
+                );
+            },
             "Depends" => {
                 metadata.depends = Some(
                     value

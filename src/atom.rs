@@ -28,6 +28,16 @@ pub struct AtomMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maintainer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub depends: Option<Vec<String>>,
     pub contents: HashMap<String, Lock>,
 }
@@ -37,6 +47,11 @@ impl AtomMetadata {
         name: &str,
         description: Option<String>,
         version: Option<String>,
+        architecture: Option<String>,
+        maintainer: Option<String>,
+        section: Option<String>,
+        priority: Option<String>,
+        homepage: Option<String>,
         depends: Option<Vec<String>>,
         contents: Option<HashMap<String, Lock>>
     ) -> Self {
@@ -44,6 +59,11 @@ impl AtomMetadata {
             name: String::from(name),
             description: description,
             version: version,
+            architecture: architecture,
+            maintainer: maintainer,
+            section: section,
+            priority: priority,
+            homepage: homepage,
             depends: depends,
             contents: contents.unwrap_or(HashMap::new())
         }
