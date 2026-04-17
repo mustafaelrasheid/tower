@@ -9,7 +9,11 @@ use std::fs::{
     set_permissions,
     write
 };
-use std::io::{Error as IOError, Read};
+use std::io::{
+    Error as IOError,
+    Read,
+    ErrorKind
+};
 use std::io::ErrorKind::DirectoryNotEmpty;
 use std::path::Path;
 use xz2::read::XzDecoder;
@@ -184,6 +188,7 @@ pub fn decompress_package(data: &[u8])
 
 fn extract_tar(data: &[u8])
 -> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError> {
+    let mut hardlinks: Vec<(String, u32, String)> = Vec::new();
     let mut archive = TarArchive::new(data);
     let mut files = Vec::new();
     
@@ -191,8 +196,10 @@ fn extract_tar(data: &[u8])
         .map_err(|e| ArchiveError::Archive(e))? {
         let mut entry = entry_result
             .map_err(|e| ArchiveError::Archive(e))?;
+        let entry_type = entry.header().entry_type();
         
-        if !entry.header().entry_type().is_file() {
+        if !(entry_type.is_file()
+        || entry_type.is_hard_link()) {
             continue;
         }
         
@@ -206,10 +213,51 @@ fn extract_tar(data: &[u8])
             .header()
             .mode()
             .map_err(|e| ArchiveError::Archive(e))?;
+        
+        if entry_type.is_file() {
+            entry.read_to_end(&mut buffer)
+                .map_err(|e| ArchiveError::Archive(e))?;                
+            files.push((path, permission, buffer));
+        } else if entry_type.is_hard_link() {
+            let target = entry.header()
+                .link_name()
+                .map_err(|e| ArchiveError::Archive(e))?
+                .map(|t| t
+                    .to_string_lossy()
+                    .trim_start_matches("./")
+                    .to_string()
+                )
+                .unwrap_or_default();
 
-        entry.read_to_end(&mut buffer)
-            .map_err(|e| ArchiveError::Archive(e))?;                
-        files.push((path, permission, buffer));
+            hardlinks.push((
+                path,
+                permission,
+                target
+            ));
+        }
+    }
+    for (path, perm, target) in hardlinks {
+        files.push((
+            path,
+            perm,
+            files
+                .iter()
+                .find_map(|(p, _, data)| {
+                    if p.as_str() == target.as_str() {
+                        return Some(data);
+                    }
+                    return None;
+                })
+                .ok_or(
+                    ArchiveError::Archive(
+                        IOError::new(
+                            ErrorKind::NotFound,
+                            "hardlink to inode not found"
+                        )
+                    )
+                )?
+                .to_vec()
+        ));
     }
     
     return Ok(files);
