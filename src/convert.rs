@@ -1,13 +1,17 @@
 use std::string::FromUtf8Error;
 use std::collections::{HashMap, HashSet};
-use crate::utils::{uncover_archive, parse_control, find_entry};
+use crate::utils::{
+    uncover_archive,
+    parse_control,
+    find_entry_as_regular
+};
 use crate::error::{ArchiveError, InvalidInput};
-use crate::atom::{Atom, AtomMetadata};
+use crate::atom::{Atom, AtomMetadata, Entry};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
     control: &Vec<(String, String)>,
-    files: &Vec<(String, u32, Vec<u8>)>
+    entries: &Vec<Entry>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
         "", None, None, None, None, None, None, None, None, None);
@@ -87,10 +91,10 @@ fn map_control_to_atom(
         }
     }
     
-    for (path, _perm, _data) in files {
+    for entry in entries {
         insert_path(
             &mut metadata.contents,
-            path,
+            &entry.path,
             Modification::Replace
         );
     }
@@ -114,9 +118,13 @@ fn insert_path(
     if parts.len() == 1 {
         contents.insert(
             part.clone(),
-            Lock::File(FileEntry::new(
-                Some(modification), None, None
-            ))
+            Lock::File(
+                FileEntry::new(
+                    Some(modification),
+                    None,
+                    None
+                )
+            )
         );
         return;
     }
@@ -148,8 +156,7 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
 fn dpkg_control(content: &[u8])
 -> Result<Vec<(String, String)>, InvalidInput> {
     let archive = uncover_archive(content)?;
-    
-    let control = find_entry(&archive, &["control"])?;
+    let control = find_entry_as_regular(&archive, &["control"])?;
     
     return Ok(
         parse_control(&String::from_utf8(control.to_vec())?)
@@ -157,7 +164,7 @@ fn dpkg_control(content: &[u8])
 }
 
 fn dpkg_data(content: &[u8])
--> Result<Vec<(String, u32, Vec<u8>)>, ArchiveError> {
+-> Result<Vec<Entry>, ArchiveError> {
     return uncover_archive(&content);
 }
 
@@ -165,7 +172,10 @@ pub fn extract_deb(package: &[u8])
 -> Result<Atom, InvalidInput> {
     let entries = uncover_archive(package)?;
     let version = dpkg_version(
-        find_entry(&entries, &["debian-binary"])?,
+        find_entry_as_regular(
+            &entries,
+            &["debian-binary"]
+        )?
     )?;
     if &version != "2.0" {
         return Err(
@@ -175,10 +185,16 @@ pub fn extract_deb(package: &[u8])
         );
     }
     let control = dpkg_control(
-        find_entry(&entries, &["control.tar.gz", "control.tar.xz"])?,
+        find_entry_as_regular(
+            &entries,
+            &["control.tar.gz", "control.tar.xz"]
+        )?
     )?;
     let data = dpkg_data(
-        find_entry(&entries, &["data.tar.gz", "data.tar.xz"])?,
+        find_entry_as_regular(
+            &entries,
+            &["data.tar.gz", "data.tar.xz"]
+        )?
     )?;
     
     return Ok(
@@ -241,12 +257,12 @@ pub fn resolve_deps(
             continue;
         };
         
-        package.files.append(&mut added_dep.files.clone());
-        added_dep.files
+        package.entries.append(&mut added_dep.entries.clone());
+        added_dep.entries
             .iter()
-            .for_each(|(entry, _perm, _data)| insert_path(
+            .for_each(|entry| insert_path(
                 &mut package.metadata.contents,
-                entry,
+                &entry.path,
                 Modification::Exist
             ));
     }

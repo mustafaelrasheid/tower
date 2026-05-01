@@ -22,7 +22,7 @@ use crate::utils::{
     read_collection_as_json,
     read_file_as_json,
     safe_rm_file_dir,
-    safe_place_file,
+    safe_place_entry,
     create_package
 };
 use crate::lock::Lock;
@@ -234,12 +234,12 @@ fn main() -> Result<(), InputError> {
                     "The following files are going to be added or replaced",
                     &replace_entries
                         .iter()
-                        .map(|(name, _, _)| name.to_string())
+                        .map(|entry| entry.path.to_string())
                         .collect::<Vec<String>>()
                 );
-                for (path, perm, data) in replace_entries {
-                    safe_place_file(&path, perm, &data)
-                        .expect_or_exit(&format!("Failed to place file {}", path));
+                for entry in replace_entries {
+                    safe_place_entry(&entry)
+                        .expect_or_exit(&format!("Failed to place file {}", &entry.path));
                 }
 
                 confirm_pkgs_action(
@@ -247,13 +247,13 @@ fn main() -> Result<(), InputError> {
                     "The following files are going to be added if not found",
                     &exist_entries
                         .iter()
-                        .map(|(name, _, _)| name.to_string())
+                        .map(|entry| entry.path.to_string())
                         .collect::<Vec<String>>()
                 );
-                for (path, perm, data) in exist_entries {
-                    if !Path::new(&path).exists() || force {
-                        safe_place_file(&path, perm, &data)
-                            .expect_or_exit(&format!("Failed to place file {}", path));
+                for entry in exist_entries {
+                    if !Path::new(&entry.path).exists() || force {
+                        safe_place_entry(&entry)
+                            .expect_or_exit(&format!("Failed to place file {}", &entry.path));
                     }
                 }
             }
@@ -334,7 +334,7 @@ fn main() -> Result<(), InputError> {
                 }
                 output(
                     &format!("{}.brick", package),
-                    &create_package(pkg)
+                    &create_package(&pkg)
                 );
             }
         },
@@ -371,7 +371,7 @@ fn main() -> Result<(), InputError> {
                 };
                 output(
                     &format!("{}.brick", package),
-                    &create_package(pkg)
+                    &create_package(&pkg)
                 );
             }
         }

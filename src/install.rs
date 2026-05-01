@@ -1,5 +1,9 @@
-use crate::utils::{map_atom_to_entries, uncover_archive, find_entry}; 
-use crate::atom::AtomMetadata;
+use crate::utils::{
+    map_atom_to_entries,
+    uncover_archive,
+    find_entry_as_regular
+}; 
+use crate::atom::{AtomMetadata, Entry, EntryType};
 use crate::error::InvalidInput;
 
 pub fn install_brick(
@@ -7,13 +11,16 @@ pub fn install_brick(
     root_dir: &str,
     package: &[u8],
 ) -> Result<
-    (Vec<(String, u32, Vec<u8>)>, Vec<(String, u32, Vec<u8>)>),
+    (Vec<Entry>, Vec<Entry>),
     InvalidInput
 > {
-    let files = uncover_archive(package)?;
-    let mut replace_files: Vec<(String, u32, Vec<u8>)> = Vec::new();
-    let mut exist_files:   Vec<(String, u32, Vec<u8>)> = Vec::new();
-    let metadata_buf = find_entry(&files, &["metadata.json"])?;
+    let entries = uncover_archive(package)?;
+    let mut replace_files: Vec<Entry> = Vec::new();
+    let mut exist_files:   Vec<Entry> = Vec::new();
+    let metadata_buf = find_entry_as_regular(
+        &entries,
+        &["metadata.json"]
+    )?;
     let metadata: AtomMetadata = serde_json::from_value(
         serde_json::from_str(
             &String::from_utf8_lossy(&metadata_buf).to_string()
@@ -32,14 +39,16 @@ pub fn install_brick(
         &["slice", "replace"]
     );
 
-    replace_files.push((
-        format!("{}/atoms/{}.json", lib_dir, &metadata.name),
-        0o644,
-        metadata_buf.to_vec()
-    ));
+    replace_files.push(
+        Entry::new(
+            &format!("{}/atoms/{}.json", lib_dir, &metadata.name),
+            0o644,
+            EntryType::Regular(metadata_buf.to_vec())
+        )
+    );
 
-    for (path, perm, data) in files {
-        let path = path
+    for entry in entries {
+        let path = entry.path
             .trim_start_matches("contents")
             .to_string();
 
@@ -47,19 +56,23 @@ pub fn install_brick(
             continue;
         }
         if replace_entries.contains(&path) {
-            replace_files.push((
-                format!("{}/{}", root_dir, &path),
-                perm,
-                data
-            ));
+            replace_files.push(
+                Entry::new(
+                    &format!("{}/{}", root_dir, &path),
+                    entry.perm,
+                    entry.data
+                )
+            );
             continue;
         }
         if exist_entries.contains(&path) {
-            exist_files.push((
-                format!("{}/{}", root_dir, &path),
-                perm,
-                data
-            ));
+            exist_files.push(
+                Entry::new(
+                    &format!("{}/{}", root_dir, &path),
+                    entry.perm,
+                    entry.data
+                )
+            );
         }
     }
 

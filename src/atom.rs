@@ -3,20 +3,47 @@ use std::collections::HashMap;
 use crate::lock::{Lock, DirectoryEntry};
 
 #[derive(Clone)]
+pub enum EntryType {
+    Symlink(String),
+    Regular(Vec<u8>),
+}
+
+#[derive(Clone)]
+pub struct Entry {
+    pub path: String,
+    pub perm: u32,
+    pub data: EntryType,
+}
+
+impl Entry {
+    pub fn new(
+        path: &str,
+        perm: u32,
+        data: EntryType
+    ) -> Self {
+        return Self {
+            path: path.to_string(),
+            perm: perm,
+            data: data
+        };
+    }
+}
+
+#[derive(Clone)]
 pub struct Atom {
     pub metadata: AtomMetadata,
-    pub files: Vec<(String, u32, Vec<u8>)>,
+    pub entries: Vec<Entry>,
 }
 
 impl Atom {
     pub fn new(
         metadata: AtomMetadata,
-        files: Vec<(String, u32, Vec<u8>)>
+        entries: Vec<Entry>
     ) -> Self {
         return Self {
             metadata: metadata,
-            files: files
-        }
+            entries: entries
+        };
     }
 }
 
@@ -66,7 +93,7 @@ impl AtomMetadata {
             homepage: homepage,
             depends: depends,
             contents: contents.unwrap_or(HashMap::new())
-        }
+        };
     }
 }
 
