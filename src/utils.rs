@@ -2,7 +2,6 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 use std::fs::{
     read_to_string,
     read_dir,
-    read_link,
     create_dir_all,
     remove_file,
     remove_dir,
