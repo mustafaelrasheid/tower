@@ -16,6 +16,7 @@ use std::fs::{read, write, remove_file};
 use std::path::Path;
 use dialoguer::Confirm;
 use clap::Parser;
+use rayon::prelude::*;
 use crate::args::{Cli, Commands};
 use crate::atom::AtomMetadata;
 use crate::utils::{
@@ -361,7 +362,7 @@ fn main() -> Result<(), InputError> {
                 )
                 .collect::<Result<Vec<Vec<u8>>, InputError>>()
                 .unwrap_or_exit()
-                .iter()
+                .par_iter()
                 .map(|dep|
                     convert::extract_deb(&dep)
                         .map_err(InputError::from)
@@ -412,20 +413,21 @@ fn main() -> Result<(), InputError> {
                 let pkg = loop {
                     let (pkg, missing) = convert::convert_deb(&main_pkg, &deps)
                         .expect_or_exit(&format!("Failed to export {}", &package));
-                    
+                    let mut unextracted_deps: Vec<Vec<u8>> = Vec::new();
+
                     if missing.is_empty()
                     || missing.iter().all(|m| unresolved_deps.contains(m)) {
                         break pkg;
                     }
+
                     for miss in missing {
                         match &fetch::get_deb(&miss)
                             .expect_or_exit(
                                 &format!("Failed to get {} from deb", miss)) {
                             Some(val) => {
                                 println!("Downloaded package {}", miss);
-                                deps.push(
-                                    convert::extract_deb(val)
-                                        .unwrap_or_exit()
+                                unextracted_deps.push(
+                                    val.to_vec()
                                 );
                             },
                             None => {
@@ -436,6 +438,15 @@ fn main() -> Result<(), InputError> {
                             }
                         }
                     }
+                    deps.extend(
+                    unextracted_deps
+                        .par_iter()
+                        .map(|dep|
+                            convert::extract_deb(dep)
+                                .unwrap_or_exit()
+                        )
+                        .collect::<Vec<Atom>>()
+                    )
                 };
                 output(
                     &format!("{}.brick", package),
