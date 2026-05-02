@@ -211,7 +211,11 @@ fn main() -> Result<(), InputError> {
                 &lock,
                 &ignore,
                 &root_dir
-            ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit();
+            ).map_err(
+                MissingInput::from
+            ).map_err(
+                InputError::from
+            ).unwrap_or_exit();
         },
         Commands::Export { packages, lib_dir, root_dir } => {
             let atoms = get_atoms(&lib_dir);
@@ -220,14 +224,20 @@ fn main() -> Result<(), InputError> {
                 let atom = atoms
                     .iter()
                     .find(|val| val.name.as_str() == package)
-                    .expect_or_exit(&format!("No package exists with name {}", package));
+                    .expect_or_exit(
+                        &format!("No package exists with name {}", package)
+                    );
 
                 output(
                     &format!("{}.brick", package),
                     &export::export(
                         &root_dir,
                         &atom
-                    ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit()
+                    ).map_err(
+                        MissingInput::from
+                    ).map_err(
+                        InputError::from
+                    ).unwrap_or_exit()
                 );
             }
         },
@@ -244,7 +254,10 @@ fn main() -> Result<(), InputError> {
                 let (replace_entries, exist_entries) = install::install_brick(
                     &lib_dir,
                     &root_dir,
-                    &read(&package).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit(),
+                    &read(&package)
+                        .map_err(MissingInput::from)
+                        .map_err(InputError::from)
+                        .unwrap_or_exit(),
                 )?;
 
                 confirm_pkgs_action(
@@ -257,7 +270,9 @@ fn main() -> Result<(), InputError> {
                 );
                 for entry in replace_entries {
                     safe_place_entry(&entry)
-                        .expect_or_exit(&format!("Failed to place file {}", &entry.path));
+                        .expect_or_exit(
+                            &format!("Failed to place file {}", &entry.path)
+                        );
                 }
 
                 confirm_pkgs_action(
@@ -271,7 +286,11 @@ fn main() -> Result<(), InputError> {
                 for entry in exist_entries {
                     if !Path::new(&entry.path).exists() || force {
                         safe_place_entry(&entry)
-                            .expect_or_exit(&format!("Failed to place file {}", &entry.path));
+                            .expect_or_exit(
+                                &format!(
+                                    "Failed to place file {}",
+                                    &entry.path)
+                            );
                     }
                 }
             }
@@ -293,7 +312,9 @@ fn main() -> Result<(), InputError> {
             for package in packages {
                 let atom = atoms.iter()
                     .find(|a| a.name.as_str() == package)
-                    .expect_or_exit(&format!("No Package exists with name {}", package));
+                    .expect_or_exit(
+                        &format!("No Package exists with name {}", package)
+                    );
                 let entries = purge::purge_atom(
                     &lib_dir,
                     &root_dir,
@@ -306,7 +327,11 @@ fn main() -> Result<(), InputError> {
                             .map(|a| a.clone().into())
                             .collect::<Vec<Lock>>()
                     )
-                ).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit();
+                ).map_err(
+                    MissingInput::from
+                ).map_err(
+                    InputError::from
+                ).unwrap_or_exit();
 
                 confirm_pkgs_action(
                     yes,
@@ -316,7 +341,9 @@ fn main() -> Result<(), InputError> {
                 
                 for entry in entries {
                     safe_rm_file_dir(&entry)
-                        .expect_or_exit(&format!("Failed to remove {}", &entry))
+                        .expect_or_exit(
+                            &format!("Failed to remove {}", &entry)
+                        )
                 }
             }
             rebuild_lock(
@@ -327,11 +354,20 @@ fn main() -> Result<(), InputError> {
         Commands::Convert { packages, deps } => {
             let mut deps = deps
                 .iter()
-                .map(|dep| read(&dep).map_err(MissingInput::from).map_err(InputError::from))
-                .collect::<Result<Vec<Vec<u8>>, InputError>>().unwrap_or_exit()
+                .map(|dep|
+                    read(&dep)
+                        .map_err(MissingInput::from)
+                        .map_err(InputError::from)
+                )
+                .collect::<Result<Vec<Vec<u8>>, InputError>>()
+                .unwrap_or_exit()
                 .iter()
-                .map(|dep| convert::extract_deb(&dep).map_err(InputError::from))
-                .collect::<Result<Vec<Atom>, InputError>>().unwrap_or_exit();
+                .map(|dep|
+                    convert::extract_deb(&dep)
+                        .map_err(InputError::from)
+                )
+                .collect::<Result<Vec<Atom>, InputError>>()
+                .unwrap_or_exit();
 
             for package in packages {
                 deps.push(
@@ -344,7 +380,10 @@ fn main() -> Result<(), InputError> {
                 );
 
                 let (pkg, missing) = convert::convert_deb(
-                    &read(&package).map_err(MissingInput::from).map_err(InputError::from).unwrap_or_exit(),
+                    &read(&package)
+                        .map_err(MissingInput::from)
+                        .map_err(InputError::from)
+                        .unwrap_or_exit(),
                     &deps
                 ).expect_or_exit(&format!("Failed to export {}", &package));
                 for miss in missing {
@@ -361,8 +400,12 @@ fn main() -> Result<(), InputError> {
                 let mut unresolved_deps: Vec<String> = Vec::new();
                 let mut deps: Vec<Atom> = Vec::new();
                 let main_pkg = fetch::get_deb(&package)
-                    .expect_or_exit(&format!("Failed to get {} from deb", package))
-                    .expect_or_exit(&format!("Package {} doesn't exist", package));
+                    .expect_or_exit(
+                        &format!("Failed to get {} from deb", package)
+                    )
+                    .expect_or_exit(
+                        &format!("Package {} doesn't exist", package)
+                    );
 
                 println!("Downloaded package {}", package);
 
@@ -370,18 +413,25 @@ fn main() -> Result<(), InputError> {
                     let (pkg, missing) = convert::convert_deb(&main_pkg, &deps)
                         .expect_or_exit(&format!("Failed to export {}", &package));
                     
-                    if missing.is_empty() || missing.iter().all(|m| unresolved_deps.contains(m)) {
+                    if missing.is_empty()
+                    || missing.iter().all(|m| unresolved_deps.contains(m)) {
                         break pkg;
                     }
                     for miss in missing {
                         match &fetch::get_deb(&miss)
-                            .expect_or_exit(&format!("Failed to get {} from deb", miss)) {
+                            .expect_or_exit(
+                                &format!("Failed to get {} from deb", miss)) {
                             Some(val) => {
                                 println!("Downloaded package {}", miss);
-                                deps.push(convert::extract_deb(val).unwrap_or_exit());
+                                deps.push(
+                                    convert::extract_deb(val)
+                                        .unwrap_or_exit()
+                                );
                             },
                             None => {
-                                println!("Package {} not found, continueing", miss);
+                                println!(
+                                    "Package {} not found, continueing",
+                                    miss);
                                 unresolved_deps.push(miss);
                             }
                         }
