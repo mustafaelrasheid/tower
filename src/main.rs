@@ -439,13 +439,13 @@ fn main() -> Result<(), InputError> {
                         }
                     }
                     deps.extend(
-                    unextracted_deps
-                        .par_iter()
-                        .map(|dep|
-                            convert::extract_deb(dep)
-                                .unwrap_or_exit()
-                        )
-                        .collect::<Vec<Atom>>()
+                        unextracted_deps
+                            .par_iter()
+                            .map(|dep|
+                                convert::extract_deb(dep)
+                                    .unwrap_or_exit()
+                            )
+                            .collect::<Vec<Atom>>()
                     )
                 };
                 output(

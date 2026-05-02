@@ -98,6 +98,7 @@ fn map_control_to_atom(
         } else {
             Modification::Replace
         };
+
         insert_path(
             &mut metadata.contents,
             &entry.path,
@@ -254,7 +255,7 @@ pub fn resolve_deps(
     package: &mut Atom,
     deps: &[Atom]
 ) -> Result<HashSet<String>, InvalidInput> {
-    let deps_metadata:HashMap<String, AtomMetadata> = deps
+    let deps_metadata: HashMap<String, AtomMetadata> = deps
         .iter()
         .map(|atom| (
             atom.metadata.name.to_string(),
