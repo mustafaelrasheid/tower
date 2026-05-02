@@ -432,7 +432,7 @@ fn main() -> Result<(), InputError> {
                             },
                             None => {
                                 println!(
-                                    "Package {} not found, continueing",
+                                    "Package {} not found, continuing",
                                     miss);
                                 unresolved_deps.push(miss);
                             }
