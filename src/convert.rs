@@ -11,6 +11,7 @@ use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
     control: &Vec<(String, String)>,
+    conffiles: &Vec<String>,
     entries: &Vec<Entry>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
@@ -92,10 +93,15 @@ fn map_control_to_atom(
     }
     
     for entry in entries {
+        let modification = if conffiles.contains(&entry.path) {
+            Modification::Exist
+        } else {
+            Modification::Replace
+        };
         insert_path(
             &mut metadata.contents,
             &entry.path,
-            Modification::Replace
+            modification
         );
     }
     
@@ -154,13 +160,26 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
 }
 
 fn dpkg_control(content: &[u8])
--> Result<Vec<(String, String)>, InvalidInput> {
+-> Result<(Vec<(String, String)>, Vec<String>), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
+    let conffiles = match find_entry_as_regular(&archive, &["conffiles"]) {
+        Ok(data) => {
+            String::from_utf8(data.to_vec())?
+                .lines()
+                .map(|line| line.trim().trim_start_matches("/").to_string())
+                .filter(|line| !line.is_empty())
+                .collect()
+        },
+        Err(_) => {
+            Vec::new()
+        }
+    };
     
-    return Ok(
-        parse_control(&String::from_utf8(control.to_vec())?)
-    );
+    return Ok((
+        parse_control(&String::from_utf8(control.to_vec())?),
+        conffiles
+    ));
 }
 
 fn dpkg_data(content: &[u8])
@@ -184,7 +203,7 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let control = dpkg_control(
+    let (control, conffiles) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -198,7 +217,7 @@ pub fn extract_deb(package: &[u8])
     )?;
     
     return Ok(
-        Atom::new(map_control_to_atom(&control, &data), data)
+        Atom::new(map_control_to_atom(&control, &conffiles, &data), data)
     );
 }
 
