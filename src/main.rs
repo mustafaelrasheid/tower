@@ -12,7 +12,7 @@ mod atom;
 mod group;
 
 use std::process::exit;
-use std::fs::{read, write};
+use std::fs::{read, write, remove_file};
 use std::path::Path;
 use dialoguer::Confirm;
 use clap::Parser;
@@ -168,6 +168,24 @@ fn get_lock(lib_dir: &str) -> Lock {
 fn output(file_name: &str, file: &[u8]) {
     write(file_name, file)
         .expect_or_exit(&format!("Cannot write file {}", file_name));
+}
+
+fn get_group(lib_dir: &str, group: &str) -> Group {
+    let group: Group =
+        serde_json::from_value(
+            read_file_as_json(&format!("{}/groups/{}.json", lib_dir, group))
+                .expect_or_exit("Failed to read group")
+        )
+        .expect_or_exit("Invalid Json format for group specified");
+
+    return group;
+}
+
+fn put_group(lib_dir: &str, group: &Group) {
+    write(
+        &format!("{}/groups/{}.json", lib_dir, group.name),
+        &serde_json::to_string_pretty(group).unwrap()
+    ).expect_or_exit("Failed to write group");
 }
 
 fn main() -> Result<(), InputError> {
@@ -374,6 +392,35 @@ fn main() -> Result<(), InputError> {
                     &create_package(&pkg)
                 );
             }
+        },
+        Commands::Tag { package, group, lib_dir } => {
+            let mut group = get_group(&lib_dir, &group);
+            
+            group.atoms.insert(package.to_string());
+            put_group(&lib_dir, &group);
+        },
+        Commands::Untag { package, group, lib_dir } => {
+            let mut group = get_group(&lib_dir, &group);
+            
+            group.atoms.remove(&package);
+            put_group(&lib_dir, &group);
+        },
+        Commands::CreateGroup { group, lib_dir } => {
+            let group = Group::new(&group);
+
+            put_group(&lib_dir, &group);
+        },
+        Commands::ListGroup { group, lib_dir } => {
+            let group = get_group(&lib_dir, &group);
+            
+            for item in group.atoms {
+                println!("{}", item);
+            }
+        },
+        Commands::DeleteGroup { group, lib_dir } => {
+            remove_file(
+                &format!("{}/groups/{}.json", lib_dir, group)
+            ).unwrap_or_exit();
         }
     }
 

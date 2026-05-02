@@ -60,4 +60,31 @@ pub enum Commands {
     GetDeb {
         packages: Vec<String>,
     },
+    Tag {
+        package: String,
+        group: String,
+        #[arg(long, default_value = "/var/lib/tower")]
+        lib_dir: String,
+    },
+    Untag {
+        package: String,
+        group: String,
+        #[arg(long, default_value = "/var/lib/tower")]
+        lib_dir: String,
+    },
+    CreateGroup {
+        group: String,
+        #[arg(long, default_value = "/var/lib/tower")]
+        lib_dir: String,
+    },
+    ListGroup {
+        group: String,
+        #[arg(long, default_value = "/var/lib/tower")]
+        lib_dir: String,
+    },
+    DeleteGroup {
+        group: String,
+        #[arg(long, default_value = "/var/lib/tower")]
+        lib_dir: String,
+    },
 } 
