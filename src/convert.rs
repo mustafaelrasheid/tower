@@ -270,7 +270,6 @@ pub fn resolve_deps(
     for processed_pkg_name in processed {
         let added_dep = deps.iter()
             .find(|dep_atom| &processed_pkg_name == &dep_atom.metadata.name);
-
         let added_dep = if let Some(val) = added_dep {
             val
         } else {
