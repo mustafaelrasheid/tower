@@ -12,10 +12,11 @@ use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 fn map_control_to_atom(
     control: &Vec<(String, String)>,
     conffiles: &Vec<String>,
+    copyright: Option<String>,
     entries: &Vec<Entry>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
-        "", None, None, None, None, None, None, None, None, None);
+        "", None, None, None, None, None, None, None, None, copyright, None);
     
     for (field, value) in control {
         match field.as_str() {
@@ -161,7 +162,7 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
 }
 
 fn dpkg_control(content: &[u8])
--> Result<(Vec<(String, String)>, Vec<String>), InvalidInput> {
+-> Result<(Vec<(String, String)>, Vec<String>, Option<String>), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
     let conffiles = match find_entry_as_regular(&archive, &["conffiles"]) {
@@ -176,10 +177,19 @@ fn dpkg_control(content: &[u8])
             Vec::new()
         }
     };
+    let copyright = match find_entry_as_regular(&archive, &["copyright"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
-        conffiles
+        conffiles,
+        copyright
     ));
 }
 
@@ -204,7 +214,7 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let (control, conffiles) = dpkg_control(
+    let (control, conffiles, copyright) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -218,7 +228,15 @@ pub fn extract_deb(package: &[u8])
     )?;
     
     return Ok(
-        Atom::new(map_control_to_atom(&control, &conffiles, &data), data)
+        Atom::new(
+            map_control_to_atom(
+                &control,
+                &conffiles,
+                copyright,
+                &data,
+            ),
+            data
+        )
     );
 }
 

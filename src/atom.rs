@@ -66,6 +66,8 @@ pub struct AtomMetadata {
     pub homepage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depends: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copyright: Option<String>,
     pub contents: HashMap<String, Lock>,
 }
 
@@ -80,6 +82,7 @@ impl AtomMetadata {
         priority: Option<String>,
         homepage: Option<String>,
         depends: Option<Vec<String>>,
+        copyright: Option<String>,
         contents: Option<HashMap<String, Lock>>
     ) -> Self {
         return Self {
@@ -92,6 +95,7 @@ impl AtomMetadata {
             priority: priority,
             homepage: homepage,
             depends: depends,
+            copyright: copyright,
             contents: contents.unwrap_or(HashMap::new())
         };
     }
