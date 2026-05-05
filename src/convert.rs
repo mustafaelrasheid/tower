@@ -6,13 +6,14 @@ use crate::utils::{
     find_entry_as_regular
 };
 use crate::error::{ArchiveError, InvalidInput};
-use crate::atom::{Atom, AtomMetadata, Entry};
+use crate::atom::{Atom, AtomMetadata, Entry, EntryType};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
     control: &Vec<(String, String)>,
     conffiles: &Vec<String>,
     copyright: Option<String>,
+    md5sums: HashMap<String, String>,
     entries: &Vec<Entry>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
@@ -99,11 +100,19 @@ fn map_control_to_atom(
         } else {
             Modification::Replace
         };
+        
+        if let Some(md5sum) = md5sums.get(&entry.path)
+        && let EntryType::Regular(data) = &entry.data {
+            if &format!("{:x}", md5::compute(&data)) != md5sum {
+                println!("Warning: Failed md5 checksum for file {}", entry.path);
+            }
+        }
 
         insert_path(
             &mut metadata.contents,
             &entry.path,
-            modification
+            modification,
+            md5sums.get(&entry.path).cloned()
         );
     }
     
@@ -113,7 +122,8 @@ fn map_control_to_atom(
 fn insert_path(
     contents: &mut HashMap<String, Lock>,
     path: &str,
-    modification: Modification
+    modification: Modification,
+    md5sum: Option<String>
 ) {
     let parts: Vec<String> = path
         .trim_start_matches("./")
@@ -130,7 +140,8 @@ fn insert_path(
                 FileEntry::new(
                     Some(modification),
                     None,
-                    None
+                    None,
+                    md5sum
                 )
             )
         );
@@ -148,7 +159,8 @@ fn insert_path(
         insert_path(
             &mut dir.contents,
             &parts[1..].join("/"),
-            modification
+            modification,
+            md5sum
         );
     }
 }
@@ -162,7 +174,12 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
 }
 
 fn dpkg_control(content: &[u8])
--> Result<(Vec<(String, String)>, Vec<String>, Option<String>), InvalidInput> {
+-> Result<(
+    Vec<(String, String)>,
+    Vec<String>,
+    Option<String>,
+    HashMap<String, String>
+), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
     let conffiles = match find_entry_as_regular(&archive, &["conffiles"]) {
@@ -177,6 +194,20 @@ fn dpkg_control(content: &[u8])
             Vec::new()
         }
     };
+    let md5sums: HashMap<String, String> = match find_entry_as_regular(&archive, &["md5sums"]) {
+        Ok(data) => {
+            String::from_utf8(data.to_vec())?
+                .lines()
+                .map(|line| line.split("  ").map(|s| s.to_string()).collect::<Vec<String>>())
+                .map(|line| (line[1].trim().trim_start_matches("/").to_string(), line[0].clone()))
+                .filter(|line| !line.0.is_empty() || !line.1.is_empty())
+                .collect()
+        },
+        Err(_) => {
+            HashMap::new()
+        }
+    };
+
     let copyright = match find_entry_as_regular(&archive, &["copyright"]) {
         Ok(text) => {
             Some(String::from_utf8(text.to_vec())?)
@@ -189,7 +220,8 @@ fn dpkg_control(content: &[u8])
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
         conffiles,
-        copyright
+        copyright,
+        md5sums
     ));
 }
 
@@ -214,7 +246,7 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let (control, conffiles, copyright) = dpkg_control(
+    let (control, conffiles, copyright, md5sums) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -233,6 +265,7 @@ pub fn extract_deb(package: &[u8])
                 &control,
                 &conffiles,
                 copyright,
+                md5sums,
                 &data,
             ),
             data
@@ -300,7 +333,8 @@ pub fn resolve_deps(
             .for_each(|entry| insert_path(
                 &mut package.metadata.contents,
                 &entry.path,
-                Modification::Exist
+                Modification::Exist,
+                None
             ));
     }
     

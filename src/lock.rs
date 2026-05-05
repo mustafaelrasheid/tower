@@ -46,6 +46,8 @@ pub struct FileEntry {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub file_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub md5sum: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>,
 }
 
@@ -53,12 +55,14 @@ impl FileEntry {
     pub fn new(
         modification: Option<Modification>,
         file_type: Option<String>,
-        count: Option<u32>
+        count: Option<u32>,
+        md5sum: Option<String>
     ) -> Self {
         return Self {
             modification: modification,
             file_type:    file_type,
-            count:        count
+            count:        count,
+            md5sum:       md5sum
         }
     }
 }
