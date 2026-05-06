@@ -199,12 +199,24 @@ fn dpkg_control(content: &[u8])
             Vec::new()
         }
     };
-    let md5sums: HashMap<String, String> = match find_entry_as_regular(&archive, &["md5sums"]) {
+    let md5sums: HashMap<String, String>
+        = match find_entry_as_regular(&archive, &["md5sums"]) {
         Ok(data) => {
             String::from_utf8(data.to_vec())?
                 .lines()
-                .map(|line| line.split("  ").map(|s| s.to_string()).collect::<Vec<String>>())
-                .map(|line| (line[1].trim().trim_start_matches("/").to_string(), line[0].clone()))
+                .map(|line| line
+                    .split("  ")
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+                )
+                .map(|line| (
+                    line[1]
+                        .trim()
+                        .trim_start_matches("/")
+                        .to_string(),
+                    line[0]
+                        .clone()
+                ))
                 .filter(|line| !line.0.is_empty() || !line.1.is_empty())
                 .collect()
         },
