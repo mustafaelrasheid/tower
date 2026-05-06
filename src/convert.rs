@@ -13,11 +13,15 @@ fn map_control_to_atom(
     control: &Vec<(String, String)>,
     conffiles: &Vec<String>,
     copyright: Option<String>,
+    changelog: Option<String>,
     md5sums: HashMap<String, String>,
     entries: &Vec<Entry>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
-        "", None, None, None, None, None, None, None, None, copyright, None);
+        "", None, None, None, None, None, None, None, None,
+        copyright, changelog,
+        None
+    );
     
     for (field, value) in control {
         match field.as_str() {
@@ -178,6 +182,7 @@ fn dpkg_control(content: &[u8])
     Vec<(String, String)>,
     Vec<String>,
     Option<String>,
+    Option<String>,
     HashMap<String, String>
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
@@ -207,7 +212,6 @@ fn dpkg_control(content: &[u8])
             HashMap::new()
         }
     };
-
     let copyright = match find_entry_as_regular(&archive, &["copyright"]) {
         Ok(text) => {
             Some(String::from_utf8(text.to_vec())?)
@@ -216,11 +220,21 @@ fn dpkg_control(content: &[u8])
             None
         }
     };
+    let changelog = match find_entry_as_regular(&archive, &["changelog"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
+
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
         conffiles,
         copyright,
+        changelog,
         md5sums
     ));
 }
@@ -246,7 +260,7 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let (control, conffiles, copyright, md5sums) = dpkg_control(
+    let (control, conffiles, copyright, changelog, md5sums) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -265,6 +279,7 @@ pub fn extract_deb(package: &[u8])
                 &control,
                 &conffiles,
                 copyright,
+                changelog,
                 md5sums,
                 &data,
             ),
