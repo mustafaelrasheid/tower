@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use crate::lock::{Lock, DirectoryEntry};
+use crate::error::{InvalidInput};
 
 #[derive(Clone)]
 pub enum EntryType {
@@ -48,6 +49,59 @@ impl Atom {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub enum TriggerType {
+    #[serde(rename = "interest")]
+    Interest,
+    #[serde(rename = "interest-await")]
+    InterestAwait,
+    #[serde(rename = "interest-noawait")]
+    InterestNoawait,
+    #[serde(rename = "activate")]
+    Activate,
+    #[serde(rename = "activate-await")]
+    ActivateAwait,
+    #[serde(rename = "activate-noawait")]
+    ActivateNoawait
+}
+
+impl TryFrom<&str> for TriggerType {
+    type Error = InvalidInput;
+    fn try_from(text: &str) -> Result<Self, Self::Error> {
+        return match text {
+            "interest"         => Ok(TriggerType::Interest),
+            "interest-await"   => Ok(TriggerType::InterestAwait),
+            "interest-noawait" => Ok(TriggerType::InterestNoawait),
+            "activate"         => Ok(TriggerType::Activate),
+            "activate-await"   => Ok(TriggerType::ActivateAwait),
+            "activate-noawait" => Ok(TriggerType::ActivateNoawait),
+            _ => Err(
+                InvalidInput::FormatSupport(
+                    "unknown interest type".to_string()
+                )
+            )
+        };
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Trigger {
+    pub kind: TriggerType,
+    pub name: String,
+}
+
+impl Trigger {
+    pub fn new(
+        name: &str,
+        kind: TriggerType,
+    ) ->Self {
+        return Self {
+            name: name.to_string(),
+            kind: kind,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AtomMetadata {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +125,8 @@ pub struct AtomMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub changelog: Option<String>,
     pub contents: HashMap<String, Lock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub triggers: Option<Vec<Trigger>>,
 }
 
 impl AtomMetadata {
@@ -86,7 +142,8 @@ impl AtomMetadata {
         depends: Option<Vec<String>>,
         copyright: Option<String>,
         changelog: Option<String>,
-        contents: Option<HashMap<String, Lock>>
+        contents: Option<HashMap<String, Lock>>,
+        triggers: Option<Vec<Trigger>>
     ) -> Self {
         return Self {
             name: String::from(name),
@@ -100,7 +157,8 @@ impl AtomMetadata {
             depends: depends,
             copyright: copyright,
             changelog: changelog,
-            contents: contents.unwrap_or(HashMap::new())
+            contents: contents.unwrap_or(HashMap::new()),
+            triggers: triggers
         };
     }
 }

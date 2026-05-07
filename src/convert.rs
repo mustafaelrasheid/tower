@@ -6,7 +6,7 @@ use crate::utils::{
     find_entry_as_regular
 };
 use crate::error::{ArchiveError, InvalidInput};
-use crate::atom::{Atom, AtomMetadata, Entry, EntryType};
+use crate::atom::{Atom, AtomMetadata, Entry, EntryType, Trigger};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
@@ -15,12 +15,13 @@ fn map_control_to_atom(
     copyright: Option<String>,
     changelog: Option<String>,
     md5sums: HashMap<String, String>,
-    entries: &Vec<Entry>
+    entries: &Vec<Entry>,
+    triggers: Option<Vec<Trigger>>,
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
         "", None, None, None, None, None, None, None, None,
         copyright, changelog,
-        None
+        None, triggers
     );
     
     for (field, value) in control {
@@ -183,7 +184,8 @@ fn dpkg_control(content: &[u8])
     Vec<String>,
     Option<String>,
     Option<String>,
-    HashMap<String, String>
+    HashMap<String, String>,
+    Option<Vec<Trigger>>
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
@@ -240,6 +242,34 @@ fn dpkg_control(content: &[u8])
             None
         }
     };
+    let triggers = match find_entry_as_regular(&archive, &["triggers"]) {
+        Ok(text) => {
+            let mut triggers = Vec::new();
+
+            println!("-\n{}", String::from_utf8(text.to_vec())?);
+            for line in String::from_utf8(text.to_vec())?.split("\n") {
+                let line = line.trim();
+                let parts: Vec<&str> = line.split(' ').collect();
+                
+                if line.is_empty() || line.starts_with("#") {
+                    continue;
+                }
+                if parts.len() < 2 {
+                    return Err(
+                        InvalidInput::MissingData(
+                            "incomplete triggers file format".to_string()
+                        )
+                    );
+                }
+
+                triggers.push(Trigger::new(parts[1], parts[0].try_into()?));
+            }
+            Some(triggers)
+        },
+        Err(_) => {
+            None
+        }
+    };
 
     
     return Ok((
@@ -247,7 +277,8 @@ fn dpkg_control(content: &[u8])
         conffiles,
         copyright,
         changelog,
-        md5sums
+        md5sums,
+        triggers
     ));
 }
 
@@ -272,7 +303,8 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let (control, conffiles, copyright, changelog, md5sums) = dpkg_control(
+    let (control, conffiles, copyright,
+        changelog, md5sums, triggers) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -294,6 +326,7 @@ pub fn extract_deb(package: &[u8])
                 changelog,
                 md5sums,
                 &data,
+                triggers
             ),
             data
         )
