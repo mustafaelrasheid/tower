@@ -66,6 +66,7 @@ pub enum TriggerType {
 
 impl TryFrom<&str> for TriggerType {
     type Error = InvalidInput;
+    
     fn try_from(text: &str) -> Result<Self, Self::Error> {
         return match text {
             "interest"         => Ok(TriggerType::Interest),
