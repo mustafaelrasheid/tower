@@ -63,7 +63,7 @@ impl fmt::Display for InvalidInput {
                 write!(formatter, "Missing Data: {}", err)
             }
             InvalidInput::FormatSupport(err) => {
-                write!(formatter, "Missing Data: {}", err)
+                write!(formatter, "Unsupported format: {}", err)
             }
         };
     }
