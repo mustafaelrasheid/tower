@@ -246,7 +246,6 @@ fn dpkg_control(content: &[u8])
         Ok(text) => {
             let mut triggers = Vec::new();
 
-            println!("-\n{}", String::from_utf8(text.to_vec())?);
             for line in String::from_utf8(text.to_vec())?.split("\n") {
                 let line = line.trim();
                 let parts: Vec<&str> = line.split(' ').collect();
