@@ -6,7 +6,7 @@ use crate::utils::{
     find_entry_as_regular
 };
 use crate::error::{ArchiveError, InvalidInput};
-use crate::atom::{Atom, AtomMetadata, Entry, EntryType, Trigger};
+use crate::atom::{Atom, AtomMetadata, Entry, EntryType, Trigger, Shlib};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
@@ -17,11 +17,12 @@ fn map_control_to_atom(
     md5sums: HashMap<String, String>,
     entries: &Vec<Entry>,
     triggers: Option<Vec<Trigger>>,
+    shlibs: Option<Vec<Shlib>>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
         "", None, None, None, None, None, None, None, None,
         copyright, changelog,
-        None, triggers
+        None, triggers, shlibs
     );
     
     for (field, value) in control {
@@ -185,7 +186,8 @@ fn dpkg_control(content: &[u8])
     Option<String>,
     Option<String>,
     HashMap<String, String>,
-    Option<Vec<Trigger>>
+    Option<Vec<Trigger>>,
+    Option<Vec<Shlib>>
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
@@ -269,7 +271,55 @@ fn dpkg_control(content: &[u8])
             None
         }
     };
+    let shlibs = match find_entry_as_regular(&archive, &["shlibs"]) {
+        Ok(text) => {
+            Some(
+                String::from_utf8(text.to_vec())?
+                    .lines()
+                    .filter(|line|
+                        !line.is_empty()
+                        && !line.starts_with("#")
+                        && !line.starts_with("udeb: ")
+                    )
+                    .map(|line| line
+                        .trim_end_matches(")")
+                        .split(' ')
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                    )
+                    .map(|line| {
+                        if line.len() < 3 {
+                            return Err(
+                                InvalidInput::MissingData(
+                                    "incomplete shlib file format"
+                                        .to_string()
+                                )
+                            );
+                        }
 
+                        return Ok(
+                            Shlib::new(
+                                &line[0],
+                                line[1].parse().map_err(|e| {
+                                    InvalidInput::MissingData(
+                                        format!(
+                                            "invalid shlib major version: {}",
+                                            e
+                                        )
+                                    )
+                                })?,
+                                &line[2],
+                                line.get(4).map(|v| v.to_string())
+                            )
+                        );
+                    })
+                    .collect::<Result<Vec<Shlib>, InvalidInput>>()?
+            )
+        },
+        Err(_) => {
+            None
+        }
+    };
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
@@ -277,7 +327,8 @@ fn dpkg_control(content: &[u8])
         copyright,
         changelog,
         md5sums,
-        triggers
+        triggers,
+        shlibs
     ));
 }
 
@@ -303,7 +354,7 @@ pub fn extract_deb(package: &[u8])
         );
     }
     let (control, conffiles, copyright,
-        changelog, md5sums, triggers) = dpkg_control(
+        changelog, md5sums, triggers, shlibs) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -325,7 +376,8 @@ pub fn extract_deb(package: &[u8])
                 changelog,
                 md5sums,
                 &data,
-                triggers
+                triggers,
+                shlibs
             ),
             data
         )

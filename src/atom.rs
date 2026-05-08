@@ -103,6 +103,31 @@ impl Trigger {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct Shlib {
+    name: String,
+    major: u32,
+    pkg_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+impl Shlib {
+    pub fn new(
+        name: &str,
+        major: u32,
+        pkg_name: &str,
+        version: Option<String>
+    ) -> Self {
+        return Self {
+            name: name.to_string(),
+            major: major,
+            pkg_name: pkg_name.to_string(),
+            version: version,
+        };
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AtomMetadata {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,6 +153,8 @@ pub struct AtomMetadata {
     pub contents: HashMap<String, Lock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub triggers: Option<Vec<Trigger>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shlibs: Option<Vec<Shlib>>,
 }
 
 impl AtomMetadata {
@@ -144,7 +171,8 @@ impl AtomMetadata {
         copyright: Option<String>,
         changelog: Option<String>,
         contents: Option<HashMap<String, Lock>>,
-        triggers: Option<Vec<Trigger>>
+        triggers: Option<Vec<Trigger>>,
+        shlibs: Option<Vec<Shlib>>,
     ) -> Self {
         return Self {
             name: String::from(name),
@@ -159,7 +187,8 @@ impl AtomMetadata {
             copyright: copyright,
             changelog: changelog,
             contents: contents.unwrap_or(HashMap::new()),
-            triggers: triggers
+            triggers: triggers,
+            shlibs: shlibs
         };
     }
 }
