@@ -121,7 +121,10 @@ fn map_control_to_atom(
         if let Some(md5sum) = md5sums.get(&entry.path)
         && let EntryType::Regular(data) = &entry.data {
             if &format!("{:x}", md5::compute(&data)) != md5sum {
-                println!("Warning: Failed md5 checksum for file {}", entry.path);
+                println!(
+                    "Warning: Failed md5 checksum for file {}",
+                    entry.path
+                );
             }
         }
 
