@@ -128,6 +128,70 @@ impl Shlib {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct SymbolHeader {
+    pub soname: String,
+    pub package: String,
+    pub template: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternatives: Option<Vec<String>>
+}
+
+impl SymbolHeader {
+    pub fn new(
+        soname: &str,
+        package: &str,
+        template: &str,
+        alternatives: Option<Vec<String>>
+    ) -> Self {
+        return Self {
+            soname: soname.to_string(),
+            package: package.to_string(),
+            template: template.to_string(),
+            alternatives: alternatives
+        };
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Symbol {
+    pub name: String,
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraint: Option<u32>,
+}
+
+impl Symbol {
+    pub fn new(
+        name: &str,
+        version: &str,
+        constraint: Option<u32>
+    ) -> Self {
+        return Self {
+            name: name.to_string(),
+            version: version.to_string(),
+            constraint: constraint,
+        };
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SymbolTable {
+    pub header: SymbolHeader,
+    pub symbols: Vec<Symbol>,
+}
+
+impl SymbolTable {
+    pub fn new(
+        header: SymbolHeader
+    ) -> Self {
+        return Self {
+            header: header,
+            symbols: Vec::new(),
+        };
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AtomMetadata {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,6 +219,8 @@ pub struct AtomMetadata {
     pub triggers: Option<Vec<Trigger>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shlibs: Option<Vec<Shlib>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbols: Option<Vec<SymbolTable>>
 }
 
 impl AtomMetadata {
@@ -173,6 +239,7 @@ impl AtomMetadata {
         contents: Option<HashMap<String, Lock>>,
         triggers: Option<Vec<Trigger>>,
         shlibs: Option<Vec<Shlib>>,
+        symbols: Option<Vec<SymbolTable>>
     ) -> Self {
         return Self {
             name: String::from(name),
@@ -188,7 +255,8 @@ impl AtomMetadata {
             changelog: changelog,
             contents: contents.unwrap_or(HashMap::new()),
             triggers: triggers,
-            shlibs: shlibs
+            shlibs: shlibs,
+            symbols: symbols,
         };
     }
 }

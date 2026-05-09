@@ -6,7 +6,17 @@ use crate::utils::{
     find_entry_as_regular
 };
 use crate::error::{ArchiveError, InvalidInput};
-use crate::atom::{Atom, AtomMetadata, Entry, EntryType, Trigger, Shlib};
+use crate::atom::{
+    Atom,
+    AtomMetadata,
+    Entry,
+    EntryType,
+    Trigger,
+    Shlib,
+    SymbolHeader,
+    Symbol,
+    SymbolTable
+};
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
@@ -17,12 +27,13 @@ fn map_control_to_atom(
     md5sums: HashMap<String, String>,
     entries: &Vec<Entry>,
     triggers: Option<Vec<Trigger>>,
-    shlibs: Option<Vec<Shlib>>
+    shlibs: Option<Vec<Shlib>>,
+    symbols: Option<Vec<SymbolTable>>
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
         "", None, None, None, None, None, None, None, None,
         copyright, changelog,
-        None, triggers, shlibs
+        None, triggers, shlibs, symbols
     );
     
     for (field, value) in control {
@@ -187,7 +198,8 @@ fn dpkg_control(content: &[u8])
     Option<String>,
     HashMap<String, String>,
     Option<Vec<Trigger>>,
-    Option<Vec<Shlib>>
+    Option<Vec<Shlib>>,
+    Option<Vec<SymbolTable>>
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
@@ -320,6 +332,115 @@ fn dpkg_control(content: &[u8])
             None
         }
     };
+    let symbols = match find_entry_as_regular(&archive, &["symbols"]) {
+        Ok(text) => {
+            let mut symbol_tables: Vec<SymbolTable> = Vec::new();
+            
+            for line in String::from_utf8(text.to_vec())?.lines() {
+                if line.starts_with(' ') {
+                    let parts: Vec<&str> = line
+                        .trim_start_matches(" ")
+                        .split(' ')
+                        .collect();
+                    
+                    if parts.len() < 2 {
+                        return Err(
+                            InvalidInput::MissingData(
+                                "invalid symbols format".to_string()
+                            )
+                        )
+                    }
+                    symbol_tables.last_mut().ok_or(
+                        InvalidInput::MissingData(
+                            "invalid symbols format".to_string()
+                        )
+                    )?.symbols.push(
+                        Symbol::new(
+                            parts[0],
+                            parts[1],
+                            parts
+                                .get(2)
+                                .map(|a| a.parse()
+                                    .map_err(|e|
+                                        InvalidInput::MissingData(
+                                            format!(
+                                                "invalid symbols format: {}",
+                                                e
+                                            )
+                                        )
+                                    )
+                                )
+                                .transpose()?
+                        )
+                    );
+                } else if line.starts_with('|') {
+                    let parts: Vec<&str> = line.split("|").collect();
+                    let table = symbol_tables.last_mut().ok_or(
+                        InvalidInput::MissingData(
+                            "invalid symbols format".to_string()
+                        )
+                    )?;
+
+                    for part in parts {
+                        if part.is_empty() {
+                            continue;
+                        }
+                        if let Some(alternatives) = &mut table.header.alternatives {
+                            alternatives.push(part.to_string());
+                        } else {
+                            table.header.alternatives = Some(
+                                vec![part.to_string()]
+                            );
+                        }
+                    }
+                } else {
+                    let parts: Vec<&str> = line.split("|").collect();
+                    let alternatives: Option<Vec<String>> = match parts.len() {
+                        1 => {
+                            None
+                        },
+                        _ => {
+                            Some(
+                                parts[1..]
+                                    .to_vec()
+                                    .into_iter()
+                                    .map(|s| s.to_string())
+                                    .collect()
+                            )
+                        }
+                    };
+                    let fragements: Vec<&str> = parts[0]
+                        .trim()
+                        .split(" ")
+                        .collect();
+
+                    if fragements.len() < 3 {
+                        return Err(
+                            InvalidInput::MissingData(
+                                "invalid symbols format".to_string()
+                            )
+                        )
+                    }
+
+                    symbol_tables.push(
+                        SymbolTable::new(
+                            SymbolHeader::new(
+                                fragements[0],
+                                fragements[1],
+                                fragements[2],
+                                alternatives
+                            )
+                        )
+                    )
+                }
+            }
+            
+            Some(symbol_tables)
+        },
+        Err(_) => {
+            None
+        }
+    };
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
@@ -328,7 +449,8 @@ fn dpkg_control(content: &[u8])
         changelog,
         md5sums,
         triggers,
-        shlibs
+        shlibs,
+        symbols
     ));
 }
 
@@ -354,7 +476,7 @@ pub fn extract_deb(package: &[u8])
         );
     }
     let (control, conffiles, copyright,
-        changelog, md5sums, triggers, shlibs) = dpkg_control(
+        changelog, md5sums, triggers, shlibs, symbols) = dpkg_control(
         find_entry_as_regular(
             &entries,
             &["control.tar.gz", "control.tar.xz"]
@@ -377,7 +499,8 @@ pub fn extract_deb(package: &[u8])
                 md5sums,
                 &data,
                 triggers,
-                shlibs
+                shlibs,
+                symbols
             ),
             data
         )
