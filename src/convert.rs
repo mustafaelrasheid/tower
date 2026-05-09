@@ -315,14 +315,7 @@ fn dpkg_control(content: &[u8])
                         return Ok(
                             Shlib::new(
                                 &line[0],
-                                line[1].parse().map_err(|e| {
-                                    InvalidInput::MissingData(
-                                        format!(
-                                            "invalid shlib major version: {}",
-                                            e
-                                        )
-                                    )
-                                })?,
+                                line[1].parse()?,
                                 &line[2],
                                 line.get(4).map(|v| v.to_string())
                             )
@@ -363,16 +356,7 @@ fn dpkg_control(content: &[u8])
                             parts[1],
                             parts
                                 .get(2)
-                                .map(|a| a.parse()
-                                    .map_err(|e|
-                                        InvalidInput::MissingData(
-                                            format!(
-                                                "invalid symbols format: {}",
-                                                e
-                                            )
-                                        )
-                                    )
-                                )
+                                .map(|a| a.parse())
                                 .transpose()?
                         )
                     );

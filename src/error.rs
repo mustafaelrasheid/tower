@@ -2,6 +2,7 @@ use std::error::Error;
 use std::string::FromUtf8Error;
 use std::fmt;
 use std::io::Error as IOError;
+use std::num::ParseIntError;
 use serde_json::error::Error as JsonError;
 use ureq::Error as RequestError;
 
@@ -43,6 +44,7 @@ pub enum InvalidInput {
     Json(JsonError),
     MissingData(String),
     FormatSupport(String),
+    NaN(ParseIntError),
 }
 
 impl Error for InvalidInput {}
@@ -64,7 +66,10 @@ impl fmt::Display for InvalidInput {
             }
             InvalidInput::FormatSupport(err) => {
                 write!(formatter, "Unsupported format: {}", err)
-            }
+            },
+            InvalidInput::NaN(err) => {
+                write!(formatter, "Invalid number value: {}", err)
+            },
         };
     }
 }
@@ -84,6 +89,12 @@ impl From<FromUtf8Error> for InvalidInput {
 impl From<JsonError> for InvalidInput {
     fn from(err: JsonError) -> Self {
         return InvalidInput::Json(err);
+    }
+}
+
+impl From<ParseIntError> for InvalidInput {
+    fn from(err: ParseIntError) -> Self {
+        return InvalidInput::NaN(err);
     }
 }
 
