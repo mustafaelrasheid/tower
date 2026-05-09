@@ -302,8 +302,8 @@ fn dpkg_control(content: &[u8])
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                     )
-                    .map(|line| {
-                        if line.len() < 3 {
+                    .map(|parts| {
+                        if parts.len() < 3 {
                             return Err(
                                 InvalidInput::MissingData(
                                     "incomplete shlib file format"
@@ -314,10 +314,10 @@ fn dpkg_control(content: &[u8])
 
                         return Ok(
                             Shlib::new(
-                                &line[0],
-                                line[1].parse()?,
-                                &line[2],
-                                line.get(4).map(|v| v.to_string())
+                                &parts[0],
+                                parts[1].parse()?,
+                                &parts[2],
+                                parts.get(4).map(|v| v.to_string())
                             )
                         );
                     })
