@@ -210,7 +210,11 @@ fn dpkg_control(content: &[u8])
         Ok(data) => {
             String::from_utf8(data.to_vec())?
                 .lines()
-                .map(|line| line.trim().trim_start_matches("/").to_string())
+                .map(|line| line
+                    .trim()
+                    .trim_start_matches("/")
+                    .to_string()
+                )
                 .filter(|line| !line.is_empty())
                 .collect()
         },
