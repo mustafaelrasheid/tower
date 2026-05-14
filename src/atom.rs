@@ -192,6 +192,34 @@ impl SymbolTable {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct Scripts {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preinst: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postinst: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prerm: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postrm: Option<String>,
+}
+
+impl Scripts {
+    pub fn new(
+        preinst: Option<String>,
+        postinst: Option<String>,
+        prerm: Option<String>,
+        postrm: Option<String>,
+    ) ->Self {
+        return Self {
+            preinst: preinst,
+            postinst: postinst,
+            prerm: prerm,
+            postrm: postrm,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AtomMetadata {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -216,6 +244,8 @@ pub struct AtomMetadata {
     pub changelog: Option<String>,
     pub contents: HashMap<String, Lock>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub scripts: Option<Scripts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub triggers: Option<Vec<Trigger>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shlibs: Option<Vec<Shlib>>,
@@ -237,6 +267,7 @@ impl AtomMetadata {
         copyright: Option<String>,
         changelog: Option<String>,
         contents: Option<HashMap<String, Lock>>,
+        scripts: Option<Scripts>,
         triggers: Option<Vec<Trigger>>,
         shlibs: Option<Vec<Shlib>>,
         symbols: Option<Vec<SymbolTable>>
@@ -254,6 +285,7 @@ impl AtomMetadata {
             copyright: copyright,
             changelog: changelog,
             contents: contents.unwrap_or(HashMap::new()),
+            scripts: scripts,
             triggers: triggers,
             shlibs: shlibs,
             symbols: symbols,

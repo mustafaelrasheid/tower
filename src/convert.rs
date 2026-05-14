@@ -15,12 +15,14 @@ use crate::atom::{
     Shlib,
     SymbolHeader,
     Symbol,
-    SymbolTable
+    SymbolTable,
+    Scripts
 };
 use crate::lock::{Lock, Modification, FileEntry, DirectoryEntry};
 
 fn map_control_to_atom(
     control: &Vec<(String, String)>,
+    scripts: Option<Scripts>,
     conffiles: &Vec<String>,
     copyright: Option<String>,
     changelog: Option<String>,
@@ -32,8 +34,8 @@ fn map_control_to_atom(
 ) -> AtomMetadata {
     let mut metadata = AtomMetadata::new(
         "", None, None, None, None, None, None, None, None,
-        copyright, changelog,
-        None, triggers, shlibs, symbols
+        copyright, changelog, 
+        None, scripts, triggers, shlibs, symbols
     );
     
     for (field, value) in control {
@@ -196,6 +198,7 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
 fn dpkg_control(content: &[u8])
 -> Result<(
     Vec<(String, String)>,
+    Option<Scripts>,
     Vec<String>,
     Option<String>,
     Option<String>,
@@ -206,6 +209,38 @@ fn dpkg_control(content: &[u8])
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
+    let preinst = match find_entry_as_regular(&archive, &["preinst"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
+    let postinst = match find_entry_as_regular(&archive, &["postinst"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
+    let prerm = match find_entry_as_regular(&archive, &["prerm"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
+    let postrm = match find_entry_as_regular(&archive, &["postrm"]) {
+        Ok(text) => {
+            Some(String::from_utf8(text.to_vec())?)
+        },
+        Err(_) => {
+            None
+        }
+    };
     let conffiles = match find_entry_as_regular(&archive, &["conffiles"]) {
         Ok(data) => {
             String::from_utf8(data.to_vec())?
@@ -435,6 +470,7 @@ fn dpkg_control(content: &[u8])
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
+        Some(Scripts::new(preinst, postinst, prerm, postrm)),
         conffiles,
         copyright,
         changelog,
@@ -466,7 +502,7 @@ pub fn extract_deb(package: &[u8])
             .to_string())
         );
     }
-    let (control, conffiles, copyright,
+    let (control, scripts, conffiles, copyright,
         changelog, md5sums, triggers, shlibs, symbols) = dpkg_control(
         find_entry_as_regular(
             &entries,
@@ -484,6 +520,7 @@ pub fn extract_deb(package: &[u8])
         Atom::new(
             map_control_to_atom(
                 &control,
+                scripts,
                 &conffiles,
                 copyright,
                 changelog,
