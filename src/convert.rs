@@ -302,7 +302,7 @@ fn dpkg_control(content: &[u8])
                     )
                     .map(|line| line
                         .trim_end_matches(")")
-                        .split(' ')
+                        .split_whitespace()
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                     )
@@ -319,7 +319,7 @@ fn dpkg_control(content: &[u8])
                         return Ok(
                             Shlib::new(
                                 &parts[0],
-                                parts[1].parse()?,
+                                &parts[1],
                                 &parts[2],
                                 parts.get(4).map(|v| v.to_string())
                             )
@@ -340,7 +340,7 @@ fn dpkg_control(content: &[u8])
                 if line.starts_with(' ') {
                     let parts: Vec<&str> = line
                         .trim_start_matches(" ")
-                        .split(' ')
+                        .split_whitespace()
                         .collect();
                     
                     if parts.len() < 2 {

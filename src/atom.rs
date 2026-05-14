@@ -105,7 +105,7 @@ impl Trigger {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Shlib {
     name: String,
-    major: u32,
+    major: String,
     pkg_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
@@ -114,13 +114,13 @@ pub struct Shlib {
 impl Shlib {
     pub fn new(
         name: &str,
-        major: u32,
+        major: &str,
         pkg_name: &str,
         version: Option<String>
     ) -> Self {
         return Self {
             name: name.to_string(),
-            major: major,
+            major: major.to_string(),
             pkg_name: pkg_name.to_string(),
             version: version,
         };
