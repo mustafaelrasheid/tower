@@ -440,7 +440,7 @@ fn dpkg_control(content: &[u8])
                         .split(" ")
                         .collect();
 
-                    if fragements.len() < 3 {
+                    if fragements.len() < 2 {
                         return Err(
                             InvalidInput::MissingData(
                                 "invalid symbols format".to_string()
@@ -453,7 +453,9 @@ fn dpkg_control(content: &[u8])
                             SymbolHeader::new(
                                 fragements[0],
                                 fragements[1],
-                                fragements[2],
+                                fragements
+                                    .get(1)
+                                    .map(|v| v.to_string()),
                                 alternatives
                             )
                         )

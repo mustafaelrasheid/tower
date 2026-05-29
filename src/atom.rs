@@ -131,7 +131,7 @@ impl Shlib {
 pub struct SymbolHeader {
     pub soname: String,
     pub package: String,
-    pub template: String,
+    pub template: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alternatives: Option<Vec<String>>
 }
@@ -140,13 +140,13 @@ impl SymbolHeader {
     pub fn new(
         soname: &str,
         package: &str,
-        template: &str,
+        template: Option<String>,
         alternatives: Option<Vec<String>>
     ) -> Self {
         return Self {
             soname: soname.to_string(),
             package: package.to_string(),
-            template: template.to_string(),
+            template: template,
             alternatives: alternatives
         };
     }
