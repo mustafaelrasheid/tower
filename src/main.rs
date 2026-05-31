@@ -14,6 +14,7 @@ mod group;
 use std::process::exit;
 use std::fs::{read, write, remove_file};
 use std::path::Path;
+use std::process::Command;
 use dialoguer::Confirm;
 use clap::Parser;
 use rayon::prelude::*;
@@ -24,7 +25,8 @@ use crate::utils::{
     read_file_as_json,
     safe_rm_file_dir,
     safe_place_entry,
-    create_package
+    create_package,
+    parse_script
 };
 use crate::lock::Lock;
 use crate::group::Group;
@@ -242,7 +244,8 @@ fn main() -> Result<(), InputError> {
                 );
             }
         },
-        Commands::Install { packages, lib_dir, root_dir, force, yes } => {
+        Commands::Install { packages, lib_dir,
+            root_dir, force, yes, run_scripts } => {
             let atoms = get_atoms(&lib_dir);
 
             confirm_pkgs_action(
@@ -252,7 +255,8 @@ fn main() -> Result<(), InputError> {
             );
             
             for package in packages {
-                let (replace_entries, exist_entries) = install::install_brick(
+                let (replace_entries, exist_entries, preinst, postinst)
+                    = install::install_brick(
                     &lib_dir,
                     &root_dir,
                     &read(&package)
@@ -269,6 +273,21 @@ fn main() -> Result<(), InputError> {
                         .map(|entry| entry.path.to_string())
                         .collect::<Vec<String>>()
                 );
+
+                if run_scripts {
+                    if let Some(val) = preinst {
+                        let (cmd_name, rest) = parse_script(&val)
+                            .expect_or_exit("Failed to parse script");
+
+                        Command::new(cmd_name)
+                            .arg("-c")
+                            .arg(rest)
+                            .spawn()
+                            .expect_or_exit("Failed to execute script")
+                            .wait()
+                            .expect_or_exit("Failed to wait for script");
+                    }
+                }
                 for entry in replace_entries {
                     safe_place_entry(&entry)
                         .expect_or_exit(
@@ -292,6 +311,20 @@ fn main() -> Result<(), InputError> {
                                     "Failed to place file {}",
                                     &entry.path)
                             );
+                    }
+                }
+                if run_scripts {
+                    if let Some(val) = postinst {
+                        let (cmd_name, rest) = parse_script(&val)
+                            .expect_or_exit("Failed to parse script");
+    
+                        Command::new(cmd_name)
+                            .arg("-c")
+                            .arg(rest)
+                            .spawn()
+                            .expect_or_exit("Failed to run script")
+                            .wait()
+                            .expect_or_exit("Failed to wait for script");
                     }
                 }
             }

@@ -485,3 +485,29 @@ pub fn safe_place_entry(entry: &Entry)
 
     return Ok(());
 }
+
+pub fn parse_script(script: &str) -> Result<(String, String), InvalidInput> {
+    let (first, rest) = script.split_once("\n").ok_or(
+        InvalidInput::MissingData(
+            "No shibang was found".to_string()
+        )
+    )?;
+    if !first.starts_with("#!") {
+        return Err(
+            InvalidInput::MissingData(
+                "No shibang was found".to_string()
+            )
+        );
+    }
+    let path = first.trim_start_matches("#!");
+    let cmd_name = path.rsplit_once('/').ok_or(
+        InvalidInput::MissingData(
+            "Invalid shibang".to_string()
+        )
+    )?.1;
+
+    return Ok((
+        cmd_name.to_string(),
+        rest.to_string()
+    ));
+}

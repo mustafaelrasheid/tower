@@ -11,7 +11,7 @@ pub fn install_brick(
     root_dir: &str,
     package: &[u8],
 ) -> Result<
-    (Vec<Entry>, Vec<Entry>),
+    (Vec<Entry>, Vec<Entry>, Option<String>, Option<String>),
     InvalidInput
 > {
     let entries = uncover_archive(package)?;
@@ -76,5 +76,16 @@ pub fn install_brick(
         }
     }
 
-    return Ok((replace_files, exist_files));
+    return Ok((
+        replace_files,
+        exist_files,
+        metadata.scripts
+            .as_ref()
+            .map(|scripts| scripts.preinst.clone())
+            .flatten(),
+        metadata.scripts
+            .as_ref()
+            .map(|scripts| scripts.postinst.clone())
+            .flatten()
+    ));
 }

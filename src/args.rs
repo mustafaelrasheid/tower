@@ -42,6 +42,8 @@ pub enum Commands {
         force: bool,
         #[arg(long)]
         yes: bool,
+        #[arg(long)]
+        run_scripts: bool,
     },
     Purge {
         packages: Vec<String>,
