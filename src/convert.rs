@@ -195,6 +195,207 @@ fn dpkg_version(content: &[u8]) -> Result<String, FromUtf8Error> {
     return Ok(content);
 }
 
+fn parse_conffiles(text: &str) -> Vec<String> {
+    let lines = text
+        .lines()
+        .map(|line| line
+            .trim()
+            .trim_start_matches("/")
+            .to_string()
+        )
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    return lines;
+}
+
+fn parse_md5sums(text: &str) -> HashMap<String, String> {
+    let pairs: HashMap<String, String> = text.lines()
+        .map(|line| line
+            .split("  ")
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+        )
+        .map(|line| (
+            line[1]
+                .trim()
+                .trim_start_matches("/")
+                .to_string(),
+            line[0]
+                .clone()
+        ))
+        .filter(|line| !line.0.is_empty() || !line.1.is_empty())
+        .collect();
+
+    return pairs;
+}
+
+fn parse_triggers(text: &str) -> Result<Vec<Trigger>, InvalidInput> {
+    let mut triggers = Vec::new();
+
+    for line in text.split("\n") {
+        let line = line.trim();
+        let parts: Vec<&str> = line
+            .split(' ')
+            .collect();
+        
+        if line.is_empty() || line.starts_with("#") {
+            continue;
+        }
+        if parts.len() < 2 {
+            return Err(
+                InvalidInput::MissingData(
+                    "incomplete triggers file format".to_string()
+                )
+            );
+        }
+
+        triggers.push(
+            Trigger::new(
+                parts[1],
+                parts[0].try_into()?
+            )
+        );
+    }
+    
+    return Ok(triggers);
+}
+
+fn parse_shlibs(text: &str) -> Result<Vec<Shlib>, InvalidInput> {
+    let shlibs = text
+        .lines()
+        .filter(|line|
+            !line.is_empty()
+            && !line.starts_with("#")
+            && !line.starts_with("udeb: ")
+        )
+        .map(|line| line
+            .trim_end_matches(")")
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+        )
+        .map(|parts| {
+            if parts.len() < 3 {
+                return Err(
+                    InvalidInput::MissingData(
+                        "incomplete shlib file format".to_string()
+                    )
+                );
+            }
+
+            return Ok(
+                Shlib::new(
+                    &parts[0],
+                    &parts[1],
+                    &parts[2],
+                    parts.get(4).map(|v| v.to_string())
+                )
+            );
+        })
+        .collect::<Result<Vec<Shlib>, InvalidInput>>()?;
+    
+    return Ok(shlibs);
+}
+
+fn parse_symbols(text: &str) -> Result<Vec<SymbolTable>, InvalidInput> {
+    let mut symbol_tables: Vec<SymbolTable> = Vec::new();
+            
+    for line in text.lines() {
+        if line.starts_with(' ') {
+            let parts: Vec<&str> = line
+                .trim_start_matches(" ")
+                .split_whitespace()
+                .collect();
+            
+            if parts.len() < 2 {
+                return Err(
+                    InvalidInput::MissingData(
+                        "invalid symbols format".to_string()
+                    )
+                );
+            }
+            symbol_tables.last_mut().ok_or(
+                InvalidInput::MissingData(
+                    "invalid symbols format".to_string()
+                )
+            )?.symbols.push(
+                Symbol::new(
+                    parts[0],
+                    parts[1],
+                    parts
+                        .get(2)
+                        .map(|a| a.parse())
+                        .transpose()?
+                )
+            );
+        } else if line.starts_with('|') {
+            let parts: Vec<&str> = line.split("|").collect();
+            let table = symbol_tables.last_mut().ok_or(
+                InvalidInput::MissingData(
+                    "invalid symbols format".to_string()
+                )
+            )?;
+
+            for part in parts {
+                if part.is_empty() {
+                    continue;
+                }
+                if let Some(alternatives) = &mut table.header.alternatives {
+                    alternatives.push(part.to_string());
+                } else {
+                    table.header.alternatives = Some(
+                        vec![part.to_string()]
+                    );
+                }
+            }
+        } else {
+            let parts: Vec<&str> = line.split("|").collect();
+            let alternatives: Option<Vec<String>> = match parts.len() {
+                1 => {
+                    None
+                },
+                _ => {
+                    Some(
+                        parts[1..]
+                            .to_vec()
+                            .into_iter()
+                            .map(|s| s.to_string())
+                            .collect()
+                    )
+                }
+            };
+            let fragements: Vec<&str> = parts[0]
+                .trim()
+                .split(" ")
+                .collect();
+
+            if fragements.len() < 2 {
+                return Err(
+                    InvalidInput::MissingData(
+                        "invalid symbols format".to_string()
+                    )
+                )
+            }
+
+            symbol_tables.push(
+                SymbolTable::new(
+                    SymbolHeader::new(
+                        fragements[0],
+                        fragements[1],
+                        fragements
+                            .get(1)
+                            .map(|v| v.to_string()),
+                        alternatives
+                    )
+                )
+            );
+        }
+    }
+    
+    return Ok(symbol_tables);
+}
+
 fn dpkg_control(content: &[u8])
 -> Result<(
     Vec<(String, String)>,
@@ -209,266 +410,60 @@ fn dpkg_control(content: &[u8])
 ), InvalidInput> {
     let archive = uncover_archive(content)?;
     let control = find_entry_as_regular(&archive, &["control"])?;
-    let preinst = match find_entry_as_regular(&archive, &["preinst"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let postinst = match find_entry_as_regular(&archive, &["postinst"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let prerm = match find_entry_as_regular(&archive, &["prerm"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let postrm = match find_entry_as_regular(&archive, &["postrm"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let conffiles = match find_entry_as_regular(&archive, &["conffiles"]) {
-        Ok(data) => {
-            String::from_utf8(data.to_vec())?
-                .lines()
-                .map(|line| line
-                    .trim()
-                    .trim_start_matches("/")
-                    .to_string()
-                )
-                .filter(|line| !line.is_empty())
-                .collect()
-        },
-        Err(_) => {
-            Vec::new()
-        }
-    };
-    let md5sums: HashMap<String, String>
-        = match find_entry_as_regular(&archive, &["md5sums"]) {
-        Ok(data) => {
-            String::from_utf8(data.to_vec())?
-                .lines()
-                .map(|line| line
-                    .split("  ")
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>()
-                )
-                .map(|line| (
-                    line[1]
-                        .trim()
-                        .trim_start_matches("/")
-                        .to_string(),
-                    line[0]
-                        .clone()
-                ))
-                .filter(|line| !line.0.is_empty() || !line.1.is_empty())
-                .collect()
-        },
-        Err(_) => {
-            HashMap::new()
-        }
-    };
-    let copyright = match find_entry_as_regular(&archive, &["copyright"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let changelog = match find_entry_as_regular(&archive, &["changelog"]) {
-        Ok(text) => {
-            Some(String::from_utf8(text.to_vec())?)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let triggers = match find_entry_as_regular(&archive, &["triggers"]) {
-        Ok(text) => {
-            let mut triggers = Vec::new();
-
-            for line in String::from_utf8(text.to_vec())?.split("\n") {
-                let line = line.trim();
-                let parts: Vec<&str> = line.split(' ').collect();
-                
-                if line.is_empty() || line.starts_with("#") {
-                    continue;
-                }
-                if parts.len() < 2 {
-                    return Err(
-                        InvalidInput::MissingData(
-                            "incomplete triggers file format".to_string()
-                        )
-                    );
-                }
-
-                triggers.push(Trigger::new(parts[1], parts[0].try_into()?));
-            }
-            Some(triggers)
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let shlibs = match find_entry_as_regular(&archive, &["shlibs"]) {
-        Ok(text) => {
-            Some(
-                String::from_utf8(text.to_vec())?
-                    .lines()
-                    .filter(|line|
-                        !line.is_empty()
-                        && !line.starts_with("#")
-                        && !line.starts_with("udeb: ")
-                    )
-                    .map(|line| line
-                        .trim_end_matches(")")
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>()
-                    )
-                    .map(|parts| {
-                        if parts.len() < 3 {
-                            return Err(
-                                InvalidInput::MissingData(
-                                    "incomplete shlib file format"
-                                        .to_string()
-                                )
-                            );
-                        }
-
-                        return Ok(
-                            Shlib::new(
-                                &parts[0],
-                                &parts[1],
-                                &parts[2],
-                                parts.get(4).map(|v| v.to_string())
-                            )
-                        );
-                    })
-                    .collect::<Result<Vec<Shlib>, InvalidInput>>()?
-            )
-        },
-        Err(_) => {
-            None
-        }
-    };
-    let symbols = match find_entry_as_regular(&archive, &["symbols"]) {
-        Ok(text) => {
-            let mut symbol_tables: Vec<SymbolTable> = Vec::new();
-            
-            for line in String::from_utf8(text.to_vec())?.lines() {
-                if line.starts_with(' ') {
-                    let parts: Vec<&str> = line
-                        .trim_start_matches(" ")
-                        .split_whitespace()
-                        .collect();
-                    
-                    if parts.len() < 2 {
-                        return Err(
-                            InvalidInput::MissingData(
-                                "invalid symbols format".to_string()
-                            )
-                        )
-                    }
-                    symbol_tables.last_mut().ok_or(
-                        InvalidInput::MissingData(
-                            "invalid symbols format".to_string()
-                        )
-                    )?.symbols.push(
-                        Symbol::new(
-                            parts[0],
-                            parts[1],
-                            parts
-                                .get(2)
-                                .map(|a| a.parse())
-                                .transpose()?
-                        )
-                    );
-                } else if line.starts_with('|') {
-                    let parts: Vec<&str> = line.split("|").collect();
-                    let table = symbol_tables.last_mut().ok_or(
-                        InvalidInput::MissingData(
-                            "invalid symbols format".to_string()
-                        )
-                    )?;
-
-                    for part in parts {
-                        if part.is_empty() {
-                            continue;
-                        }
-                        if let Some(alternatives) = &mut table.header.alternatives {
-                            alternatives.push(part.to_string());
-                        } else {
-                            table.header.alternatives = Some(
-                                vec![part.to_string()]
-                            );
-                        }
-                    }
-                } else {
-                    let parts: Vec<&str> = line.split("|").collect();
-                    let alternatives: Option<Vec<String>> = match parts.len() {
-                        1 => {
-                            None
-                        },
-                        _ => {
-                            Some(
-                                parts[1..]
-                                    .to_vec()
-                                    .into_iter()
-                                    .map(|s| s.to_string())
-                                    .collect()
-                            )
-                        }
-                    };
-                    let fragements: Vec<&str> = parts[0]
-                        .trim()
-                        .split(" ")
-                        .collect();
-
-                    if fragements.len() < 2 {
-                        return Err(
-                            InvalidInput::MissingData(
-                                "invalid symbols format".to_string()
-                            )
-                        )
-                    }
-
-                    symbol_tables.push(
-                        SymbolTable::new(
-                            SymbolHeader::new(
-                                fragements[0],
-                                fragements[1],
-                                fragements
-                                    .get(1)
-                                    .map(|v| v.to_string()),
-                                alternatives
-                            )
-                        )
-                    )
-                }
-            }
-            
-            Some(symbol_tables)
-        },
-        Err(_) => {
-            None
-        }
-    };
+    let preinst = find_entry_as_regular(&archive, &["preinst"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let postinst = find_entry_as_regular(&archive, &["postinst"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let prerm = find_entry_as_regular(&archive, &["prerm"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let postrm = find_entry_as_regular(&archive, &["postrm"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let conffiles = find_entry_as_regular(&archive, &["conffiles"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?
+        .map(|text| parse_conffiles(&text))
+        .unwrap_or(Vec::new());
+    let md5sums = find_entry_as_regular(&archive, &["md5sums"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?
+        .map(|text| parse_md5sums(&text))
+        .unwrap_or(HashMap::new());
+    let copyright = find_entry_as_regular(&archive, &["copyright"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let changelog = find_entry_as_regular(&archive, &["changelog"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?;
+    let triggers = find_entry_as_regular(&archive, &["triggers"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?
+        .map(|text| parse_triggers(&text))
+        .transpose()?;
+    let shlibs = find_entry_as_regular(&archive, &["shlibs"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?
+        .map(|text| parse_shlibs(&text))
+        .transpose()?;
+    let symbols = find_entry_as_regular(&archive, &["symbols"])
+        .ok()
+        .map(|text| String::from_utf8(text.to_vec()))
+        .transpose()?
+        .map(|text| parse_symbols(&text))
+        .transpose()?;
     
     return Ok((
         parse_control(&String::from_utf8(control.to_vec())?),
