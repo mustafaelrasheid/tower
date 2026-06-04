@@ -333,7 +333,7 @@ fn main() -> Result<(), InputError> {
                 &atoms
             );
         },
-        Commands::Purge { packages, lib_dir, root_dir, yes } => {
+        Commands::Purge { packages, lib_dir, root_dir, yes, run_scripts } => {
             let atoms  = get_atoms(&lib_dir);
             let ignore = get_ignore(&lib_dir);
 
@@ -367,6 +367,24 @@ fn main() -> Result<(), InputError> {
                     InputError::from
                 ).unwrap_or_exit();
 
+                if run_scripts {
+                    if let Some(val) = atom.scripts
+                        .as_ref()
+                        .map(|scripts| scripts.prerm.clone())
+                        .flatten() {
+                        let (cmd_name, rest) = parse_script(&val)
+                            .expect_or_exit("Failed to parse script");
+
+                        Command::new(cmd_name)
+                            .arg("-c")
+                            .arg(rest)
+                            .spawn()
+                            .expect_or_exit("Failed to execute script")
+                            .wait()
+                            .expect_or_exit("Failed to wait for script");
+                    }
+                }
+
                 confirm_pkgs_action(
                     yes,
                     "The following files are going to be deleted",
@@ -378,6 +396,24 @@ fn main() -> Result<(), InputError> {
                         .expect_or_exit(
                             &format!("Failed to remove {}", &entry)
                         )
+                }
+
+                if run_scripts {
+                    if let Some(val) = atom.scripts
+                        .as_ref()
+                        .map(|scripts| scripts.postrm.clone())
+                        .flatten() {
+                        let (cmd_name, rest) = parse_script(&val)
+                            .expect_or_exit("Failed to parse script");
+
+                        Command::new(cmd_name)
+                            .arg("-c")
+                            .arg(rest)
+                            .spawn()
+                            .expect_or_exit("Failed to execute script")
+                            .wait()
+                            .expect_or_exit("Failed to wait for script");
+                    }
                 }
             }
             rebuild_lock(

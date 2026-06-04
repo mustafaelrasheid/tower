@@ -53,6 +53,8 @@ pub enum Commands {
         root_dir: String,
         #[arg(long)]
         yes: bool,
+        #[arg(long)]
+        run_scripts: bool,
     },
     Convert {
         packages: Vec<String>,
